@@ -97,7 +97,7 @@ export function GetStringPropOrDefaultFunction<R>(props: Record<string, any> | u
     try {
       return GetDateArrayPropOrThrow(props, prop)
     } catch (e) {
-      if (!e.toString().includes("not found as date[]")) {
+      if (!(e?.toString()??"").includes("not found as date[]")) {
         throw e;
       }
     }
