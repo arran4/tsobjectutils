@@ -12,7 +12,7 @@ Basic idealized / intended use:
 ```
 export class User {
   constructor(
-    props? : Record<keyof User, unknown> | null = null,
+    props? : Partial<Record<keyof User, unknown>> | null = null,
     public Email : string = GetStringPropOrDefault(props, "Email", ""),
     public Name : string = GetStringPropOrDefault(props, "Name", ""),
     public UserUID : string = GetStringPropOrDefault(props, "UserU0ID", ""),
