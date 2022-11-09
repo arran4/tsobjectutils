@@ -22,6 +22,10 @@ export class User {
 }
 ```
 
+By using the `props` component you both have created:
+* an option on how to initialize the object
+* an easy way to copy an object
+
 # Definitions
 
 ```typescript
