@@ -8,6 +8,11 @@ Happy to accept additions, suggestions, etc.
 
 # Usage
 
+Install:
+```
+npm install @arran4/tsobjectutils
+```
+
 Basic idealized / intended use:
 ```
 export class User {
