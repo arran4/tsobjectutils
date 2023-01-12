@@ -1,7 +1,7 @@
 {
   "name": "@arran4/tsobjectutils",
-  "version": "1.0.5",
-  "description": "Some typescript marshelling to class helper functions",
+  "version": "1.0.6",
+  "description": "Some typescript marshaling to class helper functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
