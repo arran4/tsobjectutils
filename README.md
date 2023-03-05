@@ -65,4 +65,4 @@ export function GetStringPropOrThrow<R extends string | null>(props: Record<stri
 export type ConstructorFunc<Y> = (params: Partial<Exclude<Y | undefined, null>>) => Y;
 ```
 
-Check [src/index.test.ts](Tests for example usage.)
+Check [Tests for example usage.](./src/index.test.ts)
