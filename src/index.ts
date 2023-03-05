@@ -61,7 +61,7 @@ export function GetDatePropOrDefault<R>(props: Record<string, any> | undefined |
     return GetDatePropOrDefaultFunction(props, prop, () => defaultValue);
 }
 
-export function GetDatePropOrThrow(props: Record<string, any> | undefined | null, prop: string): Date {
+export function GetDatePropOrThrow<P extends Record<string, unknown>>(props: P | undefined | null, prop: keyof P): Date {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -74,7 +74,7 @@ export function GetDatePropOrThrow(props: Record<string, any> | undefined | null
             }
         }
     }
-    throw new Error(`${prop} not found as date in ${typeof props}`)
+    throw new Error(`${String(prop)} not found as date in ${typeof props}`)
 }
 
 export function GetStringArrayPropOrDefaultFunction<R>(props: Record<string, any> | undefined | null, prop: string, defaultFunction: () => R): string[] | R {
