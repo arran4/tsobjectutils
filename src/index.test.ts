@@ -20,7 +20,7 @@ import {
     GetStringArrayPropOrThrow,
     GetStringPropOrDefault,
     GetStringPropOrDefaultFunction,
-    GetStringPropOrThrow
+    GetStringPropOrThrow, Test1
 } from "./index";
 
 describe("strings", () => {
@@ -73,7 +73,10 @@ describe("dates", () => {
     })
     test("PropOrThrow", () => {
         expect(GetDatePropOrThrow({A: date }, "A")).toEqual(date)
+        expect(GetDatePropOrThrow({A: date }, "B")).toEqual(date)
+        expect(GetDatePropOrThrow({A: date }, "C")).toEqual(date)
         expect(GetDatePropOrThrow({A: 1234 }, "A")).toEqual(new Date(1234 * 1000))
+        expect(GetDatePropOrThrow({A: false }, "A")).toEqual(new Date(1234 * 1000))
         expect(GetDatePropOrThrow({A:"2023-01-01"}, "A")).toEqual(new Date("2023-01-01"))
         expect(() => GetDatePropOrThrow({ }, "A")).toThrow()
     })
