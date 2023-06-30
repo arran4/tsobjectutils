@@ -10,7 +10,7 @@ export function GetStringPropOrDefault<R extends string | null>(props: Record<st
     return GetStringPropOrDefaultFunction<R>(props, prop, () => defaultValue);
 }
 
-export function GetStringPropOrThrow<R extends string | null>(props: Record<string, any> | undefined | null, prop: string): R {
+export function GetStringPropOrThrow<R extends string | null>(props: Record<string, any> | undefined | null, prop: string, message? : string): R {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -19,7 +19,7 @@ export function GetStringPropOrThrow<R extends string | null>(props: Record<stri
             }
         }
     }
-    throw new Error(`${prop} not found as string in ${typeof props}`)
+    throw new Error(message ?? `${prop} not found as string in ${typeof props}`)
 }
 
 export function GetNumberPropOrDefaultFunction<R extends number | null>(props: Record<string, any> | undefined | null, prop: string, defaultFunction: () => R): R {
@@ -34,7 +34,7 @@ export function GetNumberPropOrDefault<R extends number | null>(props: Record<st
     return GetNumberPropOrDefaultFunction<R>(props, prop, () => defaultValue);
 }
 
-export function GetNumberPropOrThrow<R extends number | null>(props: Record<string, any> | undefined | null, prop: string): R {
+export function GetNumberPropOrThrow<R extends number | null>(props: Record<string, any> | undefined | null, prop: string, message? : string): R {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -46,7 +46,7 @@ export function GetNumberPropOrThrow<R extends number | null>(props: Record<stri
             }
         }
     }
-    throw new Error(`${prop} not found as number in ${typeof props}`)
+    throw new Error(message ?? `${prop} not found as number in ${typeof props}`)
 }
 
 export function GetDatePropOrDefaultFunction<R>(props: Record<string, any> | undefined | null, prop: string, defaultFunction: () => R): R | Date {
@@ -89,7 +89,7 @@ export function GetStringArrayPropOrDefault<R>(props: Record<string, any> | unde
     return GetStringArrayPropOrDefaultFunction(props, prop, () => defaultValue);
 }
 
-export function GetStringArrayPropOrThrow<T>(props: Record<string, any> | undefined | null, prop: string): string[] {
+export function GetStringArrayPropOrThrow<T>(props: Record<string, any> | undefined | null, prop: string, message? : string): string[] {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -98,7 +98,7 @@ export function GetStringArrayPropOrThrow<T>(props: Record<string, any> | undefi
             }
         }
     }
-    throw new Error(`${prop} not found as string[] in ${typeof props}`)
+    throw new Error(message ?? `${prop} not found as string[] in ${typeof props}`)
 }
 
 export function GetDateArrayPropOrDefaultFunction<R>(props: Record<string, any> | undefined | null, prop: string, defaultFunction: () => R): Date[] | R {
@@ -141,7 +141,7 @@ export function GetObjectPropOrThrow<Y>(props: Record<string, any> | undefined |
     return GetObjectFunctionPropOrThrow<Y>(props, prop, (e) => e as Y)
 }
 
-export function GetObjectFunctionPropOrThrow<Y>(props: Record<string, any> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>): Y {
+export function GetObjectFunctionPropOrThrow<Y>(props: Record<string, any> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, message? : string): Y {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -150,7 +150,7 @@ export function GetObjectFunctionPropOrThrow<Y>(props: Record<string, any> | und
             }
         }
     }
-    throw new Error(`${prop} not found as object in ${typeof props}`)
+    throw new Error(message ?? `${prop} not found as object in ${typeof props}`)
 }
 
 export function GetObjectPropOrDefault<Y>(props: Record<string, any> | undefined | null, prop: string, defaultValue: Y): Y {
@@ -181,7 +181,7 @@ export function GetObjectArrayPropOrThrow<Y, X extends Y[] | null>(props: Record
     return GetObjectArrayFunctionPropOrThrow<Y, X>(props, prop, (e) => e as Y)
 }
 
-export function GetObjectArrayFunctionPropOrThrow<Y, X extends Y[] | null>(props: Record<string, any> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>): X {
+export function GetObjectArrayFunctionPropOrThrow<Y, X extends Y[] | null>(props: Record<string, any> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, message? : string): X {
     if (props) {
         if (prop in props) {
             let v = props[prop];
@@ -190,7 +190,7 @@ export function GetObjectArrayFunctionPropOrThrow<Y, X extends Y[] | null>(props
             }
         }
     }
-    throw new Error(`${prop} not found as object in ${typeof props}`)
+    throw new Error(message ?? `${prop} not found as object in ${typeof props}`)
 }
 
 export function GetObjectArrayPropOrDefault<Y, X extends Y[] | null>(props: Record<string, any> | undefined | null, prop: string, defaultValue: X): X {
