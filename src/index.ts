@@ -216,3 +216,42 @@ export function GetObjectArrayPropOrDefaultFunction<Y, X extends Y[] | null>(pro
     }
     return defaultValue();
 }
+
+export function GetBooleanPropOrThrow(props:Record<string, any> | undefined | null, prop:string, constructorFunc?: ConstructorFunc<boolean>):boolean {
+    if (props && prop in props) {
+        let v = props[prop];
+        if (constructorFunc) {
+            return constructorFunc(v)
+        } else if (typeof v === 'boolean') {
+            return v;
+        }
+    }
+    throw new Error(`${prop} not found as boolean in ${typeof props}`);
+}
+
+export function GetBooleanPropOrDefaultFunction(props:Record<string, any> | undefined | null, prop:string, defaultValue: () =>boolean):boolean {
+    try {
+        return GetBooleanPropOrThrow(props, prop);
+    }
+    catch (e) {
+    }
+    return defaultValue();
+}
+
+export function GetBooleanPropOrDefault(props:Record<string, any> | undefined | null, prop:string, defaultValue:boolean):boolean {
+    return GetBooleanPropOrDefaultFunction(props, prop, () => defaultValue);
+}
+
+export function GetBooleanFunctionPropOrDefaultFunction(props:Record<string, any> | undefined | null, prop:string, constructorFunc: ConstructorFunc<boolean>, defaultValue: () =>boolean):boolean {
+    try {
+        return GetBooleanPropOrThrow(props, prop, constructorFunc);
+    }
+    catch (e) {
+    }
+    return defaultValue();
+}
+
+export function GetBooleanFunctionPropOrDefault(props:Record<string, any> | undefined | null, prop:string, constructorFunc: ConstructorFunc<boolean>, defaultValue:boolean):boolean {
+    return GetBooleanFunctionPropOrDefaultFunction(props, prop, constructorFunc, () => defaultValue);
+}
+

@@ -62,6 +62,9 @@ export function GetStringArrayPropOrThrow<T>(props: Record<string, any> | undefi
 export function GetStringPropOrDefaultFunction<R extends string | null>(props: Record<string, any> | undefined | null, prop: string, defaultFunction: () => R): R;
 export function GetStringPropOrDefault<R extends string | null>(props: Record<string, any> | undefined | null, prop: string, defaultValue: R): R;
 export function GetStringPropOrThrow<R extends string | null>(props: Record<string, any> | undefined | null, prop: string, errorMessage?: string): R;
+export function GetBooleanPropOrThrow(props:any, prop:string):boolean
+export function GetBooleanPropOrDefaultFunction(props:any, prop:string, defaultFunction:any):boolean
+export function GetBooleanPropOrDefault(props:any, prop:string, defaultValue:boolean):boolean
 export type ConstructorFunc<Y> = (params: Partial<Exclude<Y | undefined, null>>) => Y;
 ```
 
