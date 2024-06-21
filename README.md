@@ -6,6 +6,8 @@ be that sure.)
 
 Happy to accept additions, suggestions, etc.
 
+https://www.npmjs.com/package/@arran4/tsobjectutils
+
 # Usage
 
 Install:
