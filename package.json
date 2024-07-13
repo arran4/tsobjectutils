@@ -1,10 +1,10 @@
 {
   "name": "@arran4/tsobjectutils",
-  "version": "1.1.1",
+  "version": "1.1.3",
   "description": "Some typescript marshaling to class helper functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": true,
+  "type": "module",
   "scripts": {
     "test": "jest ./src",
     "build": "tsc",
