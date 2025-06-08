@@ -1,40 +1,87 @@
 # tsobjectutils
-Some typescript objects I use in a couple repos.
 
-The intended purpose is for marshalling JSON objects into objects in a sane "semi checked" way. (You can never really 
-be that sure.) 
+**tsobjectutils** provides helper functions to read values from untyped JavaScript objects and marshal them into TypeScript classes. These utilities help avoid runtime errors when parsing JSON or other data sources by validating and converting properties on the fly.
 
-Happy to accept additions, suggestions, etc.
+## Why it exists
 
-https://www.npmjs.com/package/@arran4/tsobjectutils
+Many applications receive data from APIs or local storage where the shape is only "semi-checked". Accessing fields directly can lead to `undefined` values or type errors. This library offers small helpers that safely extract strings, numbers, dates, objects and arrays. They make it easy to construct a class from loose JSON without sprinkling checks throughout your code.
 
-# Usage
+## Installation
 
-Install:
-```
+```bash
 npm install @arran4/tsobjectutils
 ```
 
-Basic idealized / intended use:
-```
+## Usage
+
+Below is a simplified `User` model showing the intended pattern.
+
+```typescript
+import {
+  GetStringPropOrDefault,
+  GetDatePropOrDefault,
+  GetBooleanPropOrDefault,
+  GetObjectPropOrThrow,
+  GetStringArrayPropOrDefault
+} from "@arran4/tsobjectutils";
+
+class UserSettings {
+  constructor(
+    props: Partial<Record<keyof UserSettings, unknown>> | null = null,
+    public Theme: string = GetStringPropOrDefault(props, "Theme", "light")
+  ) {}
+}
+
 export class User {
   constructor(
-    props : Partial<Record<keyof User, unknown>> | null = null,
-    public Email : string = GetStringPropOrDefault(props, "Email", ""),
-    public Name : string = GetStringPropOrDefault(props, "Name", ""),
-    public UserUID : string = GetStringPropOrDefault(props, "UserU0ID", ""),
-    public Created : Date | null = GetDatePropOrDefault(props, "Created", null),
-    public Modified : Date | null = GetDatePropOrDefault(props, "Modified", null),
+    props: Partial<Record<keyof User, unknown>> | null = null,
+    public Email: string = GetStringPropOrDefault(props, "Email", ""),
+    public Name: string = GetStringPropOrDefault(props, "Name", ""),
+    public Settings: UserSettings = GetObjectPropOrThrow<UserSettings>(props, "Settings"),
+    public Tags: string[] = GetStringArrayPropOrDefault(props, "Tags", []),
+    public Created: Date | null = GetDatePropOrDefault(props, "Created", null),
+    public Active: boolean = GetBooleanPropOrDefault(props, "Active", false)
   ) {}
 }
 ```
 
-By using the `props` component you both have created:
-* an option on how to initialize the object
-* an easy way to copy an object
-* an easy way to unmarshal a deseiralized json object into an object with some assurance as to the content
+Common helpers can also be used independently:
 
-# Definitions
+```typescript
+const lastLogin = GetDatePropOrDefault(rawUser, "LastLogin", new Date());
+const settings = GetObjectPropOrThrow<UserSettings>(rawUser, "Settings");
+const roles = GetStringArrayPropOrDefault(rawUser, "Roles", []);
+const isAdmin = GetBooleanPropOrDefault(rawUser, "IsAdmin", false);
+```
+
+By relying on these helpers you gain:
+
+* a single constructor argument for easy copying of an object
+* safer unmarshalling of deserialized JSON objects
+
+## API summary
+
+- `GetStringPropOrDefault`, `GetStringPropOrDefaultFunction`, `GetStringPropOrThrow` – retrieve string properties
+- `GetNumberPropOrDefault`, `GetNumberPropOrDefaultFunction`, `GetNumberPropOrThrow` – retrieve numeric properties
+- `GetDatePropOrDefault`, `GetDatePropOrDefaultFunction`, `GetDatePropOrThrow` – parse dates and timestamps
+- `GetStringArrayPropOrDefault`, `GetStringArrayPropOrDefaultFunction`, `GetStringArrayPropOrThrow` – read arrays of strings
+- `GetDateArrayPropOrDefault`, `GetDateArrayPropOrDefaultFunction`, `GetDateArrayPropOrThrow` – read arrays of dates
+- `GetObjectPropOrDefault`, `GetObjectPropOrDefaultFunction`, `GetObjectPropOrThrow` – get nested objects
+- `GetObjectFunctionPropOrDefault`, `GetObjectFunctionPropOrThrow` – construct nested objects via a custom constructor
+- `GetObjectArrayPropOrDefault`, `GetObjectArrayPropOrDefaultFunction`, `GetObjectArrayPropOrThrow`, `GetObjectArrayFunctionPropOrDefault`, `GetObjectArrayFunctionPropOrThrow` – work with arrays of objects
+- `GetBooleanPropOrDefault`, `GetBooleanPropOrDefaultFunction`, `GetBooleanFunctionPropOrDefault`, `GetBooleanPropOrThrow` – handle booleans
+- `ConstructorFunc<T>` – type for custom constructors
+
+## Running tests
+
+Use `npm test` to run the Jest suite and verify the utilities.
+
+## Links
+
+- [npm package](https://www.npmjs.com/package/@arran4/tsobjectutils)
+- [repository](https://github.com/arran4/tsobjectutils)
+
+## Definitions
 
 <!-- grep 'export' src/index.ts | sed 's/ *{$/;/' | sort -->
 
@@ -71,3 +118,4 @@ export type ConstructorFunc<Y> = (params: Partial<Exclude<Y | undefined, null>>)
 ```
 
 Check [Tests for example usage.](./src/index.test.ts)
+
