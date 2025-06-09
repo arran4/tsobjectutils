@@ -35,6 +35,7 @@ class UserSettings {
 export class User {
   constructor(
     props: Partial<Record<keyof User, unknown>> | null = null,
+    public UserUID: string = GetStringPropOrDefault(props, "UserUID", ""),
     public Email: string = GetStringPropOrDefault(props, "Email", ""),
     public Name: string = GetStringPropOrDefault(props, "Name", ""),
     public Settings: UserSettings = GetObjectPropOrThrow<UserSettings>(props, "Settings"),
