@@ -26,17 +26,17 @@ import {
 describe("strings", () => {
     test("PropOrDefaultFunction", () => {
         expect(GetStringPropOrDefaultFunction({ A: "abc" }, "A", () => null)).toEqual("abc")
-        // TODO expect(GetStringPropOrDefaultFunction({ A: 123 }, "A", () => null)).toEqual("123")
+        expect(GetStringPropOrDefaultFunction({ A: 123 }, "A", () => null)).toEqual("123")
         expect(GetStringPropOrDefaultFunction({ }, "A", () => null)).toBeNull()
     })
     test("PropOrDefault", () => {
         expect(GetStringPropOrDefault({ A: "abc" }, "A", null)).toEqual("abc")
-        // TODO expect(GetStringPropOrDefault({ A: 123 }, "A", null)).toEqual("123")
+        expect(GetStringPropOrDefault({ A: 123 }, "A", null)).toEqual("123")
         expect(GetStringPropOrDefault({ }, "A", null)).toBeNull()
     })
     test("PropOrThrow", () => {
         expect(GetStringPropOrThrow({A:"abc" }, "A")).toEqual("abc")
-        // TODO expect(GetStringPropOrThrow({ A: 123 }, "A")).toEqual("123")
+        expect(GetStringPropOrThrow({ A: 123 }, "A")).toEqual("123")
         expect(() => GetStringPropOrThrow({  }, "A")).toThrow()
     })
 })
@@ -81,17 +81,17 @@ describe("dates", () => {
 describe("string array", () => {
     test("PropOrDefaultFunction", () => {
         expect(GetStringArrayPropOrDefaultFunction({ A: ["abc"] }, "A", () => null)).toEqual(["abc"])
-        // TODO expect(GetStringArrayPropOrDefaultFunction({ A: [123] }, "A", () => null)).toEqual(["123"])
+        expect(GetStringArrayPropOrDefaultFunction({ A: [123] }, "A", () => null)).toEqual(["123"])
         expect(GetStringArrayPropOrDefaultFunction({ }, "A", () => null)).toBeNull()
     })
     test("PropOrDefault", () => {
         expect(GetStringArrayPropOrDefault({ A: ["abc"] }, "A", null)).toEqual(["abc"])
-        // TODO expect(GetStringArrayPropOrDefault({ A: [123] }, "A", null)).toEqual(["123"])
+        expect(GetStringArrayPropOrDefault({ A: [123] }, "A", null)).toEqual(["123"])
         expect(GetStringArrayPropOrDefault({ }, "A", null)).toBeNull()
     })
     test("PropOrThrow", () => {
         expect(GetStringArrayPropOrThrow({A:["abc"] }, "A")).toEqual(["abc"])
-        // TODO expect(GetStringArrayPropOrThrow({ A: [123] }, "A")).toEqual(["123"])
+        expect(GetStringArrayPropOrThrow({ A: [123] }, "A")).toEqual(["123"])
         expect(() => GetStringArrayPropOrThrow({  }, "A")).toThrow()
     })
 })
