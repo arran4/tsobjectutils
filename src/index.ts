@@ -17,6 +17,9 @@ export function GetStringPropOrThrow<R extends string | null>(props: Record<stri
             if (typeof v === 'string') {
                 return v as R
             }
+            if (typeof v === 'number') {
+                return v.toString() as R
+            }
         }
     }
     throw new Error(message ?? `${prop} not found as string in ${typeof props}`)
