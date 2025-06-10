@@ -18,6 +18,9 @@ import {
     GetStringArrayPropOrDefault,
     GetStringArrayPropOrDefaultFunction,
     GetStringArrayPropOrThrow,
+    GetBooleanPropOrThrow,
+    GetBooleanPropOrDefault,
+    GetBooleanFunctionPropOrDefault,
     GetStringPropOrDefault,
     GetStringPropOrDefaultFunction,
     GetStringPropOrThrow
@@ -167,5 +170,24 @@ describe("object array", () => {
     test("PropOrDefaultFunction", () => {
         expect(GetObjectArrayPropOrDefaultFunction<TestObject, TestObject[] | null>({ A: [{ A: "abc" }] }, "A", (e) => new TestObject(e), () => null)).toEqual([{ A: "abc" }])
         expect(GetObjectArrayPropOrDefaultFunction<TestObject, TestObject[] | null>({}, "A", (e) => new TestObject(e), () => null)).toBeNull()
+    })
+})
+
+describe("boolean", () => {
+    test("PropOrThrow", () => {
+        expect(GetBooleanPropOrThrow({ A: true }, "A")).toEqual(true)
+        expect(GetBooleanPropOrThrow({ A: "yes" }, "A", ((v: any) => v === "yes") as any)).toEqual(true)
+        expect(() => GetBooleanPropOrThrow({}, "A")).toThrow()
+        expect(() => GetBooleanPropOrThrow({ A: "true" }, "A")).toThrow()
+    })
+    test("PropOrDefault", () => {
+        expect(GetBooleanPropOrDefault({ A: false }, "A", true)).toEqual(false)
+        expect(GetBooleanPropOrDefault({}, "A", true)).toEqual(true)
+        expect(GetBooleanPropOrDefault({ A: "no" }, "A", true)).toEqual(true)
+    })
+    test("FunctionPropOrDefault", () => {
+        expect(GetBooleanFunctionPropOrDefault({ A: "Y" }, "A", ((v: any) => v === "Y") as any, false)).toEqual(true)
+        expect(GetBooleanFunctionPropOrDefault({ A: 0 }, "A", (v) => !!v, true)).toEqual(false)
+        expect(GetBooleanFunctionPropOrDefault({}, "A", (v) => !!v, false)).toEqual(false)
     })
 })
