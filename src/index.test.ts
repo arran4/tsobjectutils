@@ -23,7 +23,18 @@ import {
     GetBooleanFunctionPropOrDefault,
     GetStringPropOrDefault,
     GetStringPropOrDefaultFunction,
-    GetStringPropOrThrow
+    GetStringPropOrThrow,
+    GetMapPropOrThrow,
+    GetMapPropOrDefault,
+    GetMapPropOrDefaultFunction,
+    GetBigIntPropOrThrow,
+    GetBigIntPropOrDefault,
+    GetBigIntPropOrDefaultFunction,
+    GetObjectPropOrThrowAllowNull,
+    GetObjectFunctionPropOrThrowAllowNull,
+    GetObjectPropOrDefaultAllowNull,
+    GetObjectFunctionPropOrDefaultAllowNull,
+    GetObjectPropOrDefaultFunctionAllowNull
 } from "./index";
 
 describe("strings", () => {
@@ -61,7 +72,7 @@ describe("numbers", () => {
     })
 })
 describe("dates", () => {
-    let date = new Date();
+    const date = new Date();
     test("PropOrDefaultFunction", () => {
         expect(GetDatePropOrDefaultFunction({ A: date  }, "A", () => null)).toEqual(date)
         expect(GetDatePropOrDefaultFunction({ A:  1234 }, "A", () => null)).toEqual(new Date(1234 * 1000))
@@ -99,7 +110,7 @@ describe("string array", () => {
     })
 })
 describe("date array", () => {
-    let date = new Date();
+    const date = new Date();
     test("PropOrDefaultFunction", () => {
         expect(GetDateArrayPropOrDefaultFunction({ A: [date]  }, "A", () => null)).toEqual([date])
         expect(GetDateArrayPropOrDefaultFunction({ A:  [1234] }, "A", () => null)).toEqual([new Date(1234 * 1000)])
@@ -176,7 +187,7 @@ describe("object array", () => {
 describe("boolean", () => {
     test("PropOrThrow", () => {
         expect(GetBooleanPropOrThrow({ A: true }, "A")).toEqual(true)
-        expect(GetBooleanPropOrThrow({ A: "yes" }, "A", ((v: any) => v === "yes") as any)).toEqual(true)
+        expect(GetBooleanPropOrThrow({ A: "yes" }, "A", ((v: unknown) => v === "yes") )).toEqual(true)
         expect(() => GetBooleanPropOrThrow({}, "A")).toThrow()
         expect(() => GetBooleanPropOrThrow({ A: "true" }, "A")).toThrow()
     })
@@ -186,8 +197,73 @@ describe("boolean", () => {
         expect(GetBooleanPropOrDefault({ A: "no" }, "A", true)).toEqual(true)
     })
     test("FunctionPropOrDefault", () => {
-        expect(GetBooleanFunctionPropOrDefault({ A: "Y" }, "A", ((v: any) => v === "Y") as any, false)).toEqual(true)
+        expect(GetBooleanFunctionPropOrDefault({ A: "Y" }, "A", ((v: unknown) => v === "Y"), false)).toEqual(true)
         expect(GetBooleanFunctionPropOrDefault({ A: 0 }, "A", (v) => !!v, true)).toEqual(false)
         expect(GetBooleanFunctionPropOrDefault({}, "A", (v) => !!v, false)).toEqual(false)
+    })
+})
+
+describe("map", () => {
+    test("PropOrThrow", () => {
+        const map = new Map([["key", "value"]]);
+        expect(GetMapPropOrThrow({ A: map }, "A")).toEqual(map);
+        expect(GetMapPropOrThrow({ A: { key: "value" } }, "A")).toEqual(map);
+        expect(() => GetMapPropOrThrow({}, "A")).toThrow();
+    });
+    test("PropOrDefault", () => {
+        const map = new Map([["key", "value"]]);
+        expect(GetMapPropOrDefault({ A: map }, "A", null)).toEqual(map);
+        expect(GetMapPropOrDefault({ A: { key: "value" } }, "A", null)).toEqual(map);
+        expect(GetMapPropOrDefault({}, "A", null)).toBeNull();
+    });
+    test("PropOrDefaultFunction", () => {
+        const map = new Map([["key", "value"]]);
+        expect(GetMapPropOrDefaultFunction({ A: map }, "A", () => null)).toEqual(map);
+        expect(GetMapPropOrDefaultFunction({ A: { key: "value" } }, "A", () => null)).toEqual(map);
+        expect(GetMapPropOrDefaultFunction({}, "A", () => null)).toBeNull();
+    });
+})
+
+describe("bigint", () => {
+    test("PropOrThrow", () => {
+        expect(GetBigIntPropOrThrow({ A: 123n }, "A")).toEqual(123n);
+        expect(GetBigIntPropOrThrow({ A: 123 }, "A")).toEqual(123n);
+        expect(GetBigIntPropOrThrow({ A: "123" }, "A")).toEqual(123n);
+        expect(() => GetBigIntPropOrThrow({}, "A")).toThrow();
+    });
+    test("PropOrDefault", () => {
+        expect(GetBigIntPropOrDefault({ A: 123n }, "A", null)).toEqual(123n);
+        expect(GetBigIntPropOrDefault({ A: 123 }, "A", null)).toEqual(123n);
+        expect(GetBigIntPropOrDefault({ A: "123" }, "A", null)).toEqual(123n);
+        expect(GetBigIntPropOrDefault({}, "A", null)).toBeNull();
+    });
+    test("PropOrDefaultFunction", () => {
+        expect(GetBigIntPropOrDefaultFunction({ A: 123n }, "A", () => null)).toEqual(123n);
+        expect(GetBigIntPropOrDefaultFunction({ A: 123 }, "A", () => null)).toEqual(123n);
+        expect(GetBigIntPropOrDefaultFunction({ A: "123" }, "A", () => null)).toEqual(123n);
+        expect(GetBigIntPropOrDefaultFunction({}, "A", () => null)).toBeNull();
+    });
+})
+
+describe("object allow null", () => {
+    test("PropOrThrow", () => {
+        expect(GetObjectPropOrThrowAllowNull<TestObject | null>({ A: { A: "abc" } }, "A")).toEqual({ A: "abc" })
+        expect(() => GetObjectPropOrThrowAllowNull<TestObject | null>(null, "A")).toThrow()
+    })
+    test("FunctionPropOrThrow", () => {
+        expect(GetObjectFunctionPropOrThrowAllowNull<TestObject | null>({ A: { A: "abc" } }, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>) )).toEqual({ A: "abc" })
+        expect(() => GetObjectFunctionPropOrThrowAllowNull<TestObject | null>(null, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>))).toThrow()
+    })
+    test("PropOrDefault", () => {
+        expect(GetObjectPropOrDefaultAllowNull<TestObject | null>({ A: { A: "abc" } }, 'A', null)).toEqual({ A: "abc" })
+        expect(GetObjectPropOrDefaultAllowNull<TestObject | null>(null, 'A', null)).toBeNull()
+    })
+    test("FunctionPropOrDefault", () => {
+        expect(GetObjectFunctionPropOrDefaultAllowNull<TestObject | null>({ A: { A: "abc" } }, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), null)).toEqual({ A: "abc" })
+        expect(GetObjectFunctionPropOrDefaultAllowNull<TestObject | null>(null, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), null)).toBeNull()
+    })
+    test("PropOrDefaultFunction", () => {
+        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({ A: { A: "abc" } }, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toEqual({ A: "abc" })
+        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({}, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toBeNull()
     })
 })
