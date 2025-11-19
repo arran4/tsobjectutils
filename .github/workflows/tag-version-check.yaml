@@ -33,6 +33,12 @@ jobs:
           echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           echo "package_version=${PACKAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
+          if [[ "${TAG_VERSION}" == *-next ]]; then
+            echo "is_prerelease_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
           if [[ "${TAG_VERSION}" == *-next || "${PACKAGE_VERSION}" == *-next ]]; then
             echo "allow_publish=false" >> "$GITHUB_OUTPUT"
           else
@@ -136,6 +142,7 @@ jobs:
               name: tagName,
               generate_release_notes: true,
               draft: false,
+              prerelease: ${{ steps.check.outputs.is_prerelease_tag }},
             });
             core.info(`Created release for ${tagName}.`);
 
