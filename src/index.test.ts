@@ -24,6 +24,18 @@ import {
     GetStringPropOrDefault,
     GetStringPropOrDefaultFunction,
     GetStringPropOrThrow,
+    GetTypedBooleanPropOrDefault,
+    GetTypedBooleanPropOrThrow,
+    GetTypedDateArrayPropOrDefault,
+    GetTypedDateArrayPropOrThrow,
+    GetTypedDatePropOrDefault,
+    GetTypedDatePropOrThrow,
+    GetTypedNumberPropOrDefault,
+    GetTypedNumberPropOrThrow,
+    GetTypedStringArrayPropOrDefault,
+    GetTypedStringArrayPropOrThrow,
+    GetTypedStringPropOrDefault,
+    GetTypedStringPropOrThrow,
     GetMapPropOrThrow,
     GetMapPropOrDefault,
     GetMapPropOrDefaultFunction,
@@ -34,7 +46,8 @@ import {
     GetObjectFunctionPropOrThrowAllowNull,
     GetObjectPropOrDefaultAllowNull,
     GetObjectFunctionPropOrDefaultAllowNull,
-    GetObjectPropOrDefaultFunctionAllowNull
+    GetObjectPropOrDefaultFunctionAllowNull,
+    PropsFor
 } from "./index";
 
 describe("strings", () => {
@@ -198,8 +211,8 @@ describe("boolean", () => {
     })
     test("FunctionPropOrDefault", () => {
         expect(GetBooleanFunctionPropOrDefault({ A: "Y" }, "A", ((v: unknown) => v === "Y"), false)).toEqual(true)
-        expect(GetBooleanFunctionPropOrDefault({ A: 0 }, "A", (v) => !!v, true)).toEqual(false)
-        expect(GetBooleanFunctionPropOrDefault({}, "A", (v) => !!v, false)).toEqual(false)
+        expect(GetBooleanFunctionPropOrDefault({ A: 0 }, "A", (v: unknown) => !!v, true)).toEqual(false)
+        expect(GetBooleanFunctionPropOrDefault({}, "A", (v: unknown) => !!v, false)).toEqual(false)
     })
 })
 
@@ -263,7 +276,46 @@ describe("object allow null", () => {
         expect(GetObjectFunctionPropOrDefaultAllowNull<TestObject | null>(null, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), null)).toBeNull()
     })
     test("PropOrDefaultFunction", () => {
-        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({ A: { A: "abc" } }, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toEqual({ A: "abc" })
-        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({}, "A", (e) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toBeNull()
+        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({ A: { A: "abc" } }, "A", (e: Partial<Record<keyof TestObject, unknown>> | null) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toEqual({ A: "abc" })
+        expect(GetObjectPropOrDefaultFunctionAllowNull<TestObject | null>({}, "A", (e: Partial<Record<keyof TestObject, unknown>> | null) => new TestObject(e as Partial<Record<keyof TestObject, unknown>>), () => null)).toBeNull()
     })
 })
+
+describe("typed helpers", () => {
+    interface TypedPropsExample {
+        name: string;
+        count: number;
+        started: Date;
+        labels: string[];
+        timestamps: Date[];
+        active: boolean;
+    }
+
+    const typedProps: PropsFor<TypedPropsExample> = {
+        name: 123,
+        count: "42",
+        started: "2022-12-31",
+        labels: [1, "two"],
+        timestamps: ["2023-01-01", 5],
+        active: "Y",
+    };
+
+    test("typed throw conversions", () => {
+        expect(GetTypedStringPropOrThrow<TypedPropsExample>(typedProps, "name")).toBe("123");
+        expect(GetTypedNumberPropOrThrow<TypedPropsExample>(typedProps, "count")).toBe(42);
+        expect(GetTypedDatePropOrThrow<TypedPropsExample>(typedProps, "started")).toEqual(new Date("2022-12-31"));
+        expect(GetTypedStringArrayPropOrThrow<TypedPropsExample>(typedProps, "labels")).toEqual(["1", "two"]);
+        expect(GetTypedDateArrayPropOrThrow<TypedPropsExample>(typedProps, "timestamps")).toEqual([new Date("2023-01-01"), new Date(5 * 1000)]);
+        expect(GetTypedBooleanPropOrThrow<TypedPropsExample>(typedProps, "active", (v: unknown) => v === "Y")).toBe(true);
+    });
+
+    test("typed defaults", () => {
+        const emptyProps: PropsFor<TypedPropsExample> = {};
+        expect(GetTypedStringPropOrDefault<TypedPropsExample>(emptyProps, "name", null)).toBeNull();
+        expect(GetTypedNumberPropOrDefault<TypedPropsExample>(emptyProps, "count", null)).toBeNull();
+        expect(GetTypedDatePropOrDefault<TypedPropsExample>(emptyProps, "started", null)).toBeNull();
+        expect(GetTypedStringArrayPropOrDefault<TypedPropsExample>(emptyProps, "labels", null)).toBeNull();
+        expect(GetTypedDateArrayPropOrDefault<TypedPropsExample>(emptyProps, "timestamps", null)).toBeNull();
+        expect(GetTypedBooleanPropOrDefault<TypedPropsExample>(emptyProps, "active", false)).toBe(false);
+    });
+});

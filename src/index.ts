@@ -6,6 +6,19 @@ export function GetStringPropOrDefaultFunction<R extends string | null>(props: R
     return defaultFunction();
 }
 
+export type PropsFromType<Type> =
+    Type extends string ? string | number :
+    Type extends number ? number | string :
+    Type extends Date ? Date | number | string :
+    Type extends string[] ? Array<string | number> :
+    Type extends Date[] ? Array<Date | number | string> :
+    Type extends boolean ? boolean | string | number :
+    Type;
+
+export type PropsFor<T> = Partial<{ [K in keyof T]: PropsFromType<T[K]> }>;
+export type RestrictInterfaceToType<T, RT> = {[KN in keyof T as T[KN] extends RT ? KN : never]: T[KN] extends RT ? T[KN] : never};
+export type TypeInType<T, RT> = {[KN in keyof T as T[KN] extends RT ? KN : never]: T[KN]};
+
 export function GetBigIntPropOrThrow<R extends bigint | null>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): R {
     if (props) {
         if (prop in props) {
@@ -288,6 +301,56 @@ export function GetBooleanFunctionPropOrDefaultFunction(props:Record<string, unk
 export function GetBooleanFunctionPropOrDefault(props:Record<string, unknown> | undefined | null, prop:string, constructorFunc: (v: unknown) => boolean, defaultValue:boolean):boolean {
     return GetBooleanFunctionPropOrDefaultFunction(props, prop, constructorFunc, () => defaultValue);
 }
+
+// Typed helpers using PropsFor/TypeInType to mirror the abandoned typed branch.
+export function GetTypedStringPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string>, message?: string): string {
+    return GetStringPropOrThrow<string>(props as Record<string, unknown> | undefined | null, prop as string, message);
+}
+
+export function GetTypedStringPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string>, defaultValue: string | null): string | null {
+    return GetStringPropOrDefault<string | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedNumberPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, number>, message?: string): number {
+    return GetNumberPropOrThrow<number>(props as Record<string, unknown> | undefined | null, prop as string, message);
+}
+
+export function GetTypedNumberPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, number>, defaultValue: number | null): number | null {
+    return GetNumberPropOrDefault<number | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedDatePropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, Date>): Date {
+    return GetDatePropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedDatePropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, Date>, defaultValue: Date | null): Date | null {
+    return GetDatePropOrDefault<Date | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedStringArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string[]>): string[] {
+    return GetStringArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedStringArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string[]>, defaultValue: string[] | null): string[] | null {
+    return GetStringArrayPropOrDefault<string[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedDateArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, Date[]>): Date[] {
+    return GetDateArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedDateArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, Date[]>, defaultValue: Date[] | null): Date[] | null {
+    return GetDateArrayPropOrDefault<Date[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedBooleanPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, boolean>, constructorFunc?: (v: unknown) => boolean): boolean {
+    return GetBooleanPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string, constructorFunc) as boolean;
+}
+
+export function GetTypedBooleanPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, boolean>, defaultValue: boolean): boolean {
+    return GetBooleanPropOrDefault(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
 
 export function GetMapPropOrThrow<K, V>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): Map<K, V> {
     if (props) {
