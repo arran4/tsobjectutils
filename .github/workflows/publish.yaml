@@ -14,10 +14,10 @@ jobs:
         id: package-version
         run: |
           VERSION=$(python - <<'PY'
-import json
-with open('package.json') as f:
-    print(json.load(f).get('version', ''))
-PY
+          import json
+          with open('package.json') as f:
+              print(json.load(f).get('version', ''))
+          PY
           )
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
