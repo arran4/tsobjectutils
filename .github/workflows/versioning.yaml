@@ -49,10 +49,10 @@ jobs:
             echo "version_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ "${PREVIOUS_VERSION}" == *-next && "${CURRENT_VERSION}" != *-next ]]; then
-            echo "stabilized=true" >> "$GITHUB_OUTPUT"
+          if [[ "${CURRENT_VERSION}" != *-next && "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]]; then
+            echo "prepare_next=true" >> "$GITHUB_OUTPUT"
           else
-            echo "stabilized=false" >> "$GITHUB_OUTPUT"
+            echo "prepare_next=false" >> "$GITHUB_OUTPUT"
           fi
 
           node <<'NODE'
@@ -121,7 +121,7 @@ jobs:
           npm publish --access=public
 
       - name: Prepare next -next development version
-        if: steps.versions.outputs.stabilized == 'true'
+        if: steps.versions.outputs.prepare_next == 'true'
         run: |
           NEXT_DEV_VERSION=${{ steps.versions.outputs.next_dev_version }}
           export NEXT_DEV_VERSION
@@ -146,7 +146,7 @@ jobs:
           NODE
 
       - name: Create next iteration pull request
-        if: steps.versions.outputs.stabilized == 'true'
+        if: steps.versions.outputs.prepare_next == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
