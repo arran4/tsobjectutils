@@ -33,6 +33,12 @@ jobs:
           echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           echo "package_version=${PACKAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
+          if [[ "${TAG_VERSION}" == *-next || "${PACKAGE_VERSION}" == *-next ]]; then
+            echo "allow_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allow_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
           if [ "${TAG_VERSION}" != "${PACKAGE_VERSION}" ]; then
             echo "mismatch=true" >> "$GITHUB_OUTPUT"
           else
@@ -134,14 +140,14 @@ jobs:
             core.info(`Created release for ${tagName}.`);
 
       - name: Setup Node.js for publishing
-        if: steps.check.outputs.mismatch == 'false'
+        if: steps.check.outputs.mismatch == 'false' && steps.check.outputs.allow_publish == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish package to npm
-        if: steps.check.outputs.mismatch == 'false'
+        if: steps.check.outputs.mismatch == 'false' && steps.check.outputs.allow_publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
