@@ -1,0 +1,146 @@
+name: Version and Release Automation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Create tag and release on version change
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Determine package version changes
+        id: versions
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION
+          echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if git show HEAD^:package.json > /tmp/prev-package.json 2>/dev/null; then
+            PREVIOUS_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/prev-package.json','utf8')).version")
+          else
+            PREVIOUS_VERSION=""
+          fi
+
+          echo "previous_version=${PREVIOUS_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${PREVIOUS_VERSION}" == *-next && "${CURRENT_VERSION}" != *-next ]]; then
+            echo "stabilized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stabilized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const current = process.env.CURRENT_VERSION;
+          function nextPatch(version) {
+            const [major, minor, patchPart] = version.split('.');
+            const numericPatch = parseInt(patchPart.split('-')[0], 10);
+            return `${major}.${minor}.${numericPatch + 1}`;
+          }
+          const nextDev = `${nextPatch(current)}-next`;
+          fs.writeFileSync('/tmp/next-dev-version', nextDev);
+          NODE
+
+          NEXT_DEV_VERSION=$(cat /tmp/next-dev-version)
+          echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create git tag and GitHub release
+        if: steps.versions.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.versions.outputs.current_version }}';
+            if (!version) {
+              core.setFailed('Package version could not be determined.');
+              return;
+            }
+            const tagName = `v${version}`;
+            const { owner, repo } = context.repo;
+
+            async function ensureTag() {
+              try {
+                await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
+                core.info(`Tag ${tagName} already exists.`);
+              } catch (error) {
+                await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tagName}`, sha: context.sha });
+                core.info(`Created tag ${tagName}.`);
+              }
+            }
+
+            await ensureTag();
+            await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tagName,
+              name: tagName,
+              generate_release_notes: true,
+              draft: false
+            });
+            core.info(`Release for ${tagName} created.`);
+
+      - name: Prepare next -next development version
+        if: steps.versions.outputs.stabilized == 'true'
+        run: |
+          NEXT_DEV_VERSION=${{ steps.versions.outputs.next_dev_version }}
+          export NEXT_DEV_VERSION
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const nextVersion = process.env.NEXT_DEV_VERSION;
+          const pkgPath = path.join(process.cwd(), 'package.json');
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          pkg.version = nextVersion;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+          const lockPath = path.join(process.cwd(), 'package-lock.json');
+          if (fs.existsSync(lockPath)) {
+            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+            lock.version = nextVersion;
+            if (lock.packages && lock.packages['']) {
+              lock.packages[''].version = nextVersion;
+            }
+            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Create next iteration pull request
+        if: steps.versions.outputs.stabilized == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: prepare ${{ steps.versions.outputs.next_dev_version }}"
+          title: "chore: prepare ${{ steps.versions.outputs.next_dev_version }}"
+          body: |
+            This pull request prepares the repository for the next development cycle.
+
+            * Released version `${{ steps.versions.outputs.current_version }}`
+            * Bumps the package version to `${{ steps.versions.outputs.next_dev_version }}` to continue `-next` development.
+          branch: "chore/prepare-${{ steps.versions.outputs.next_dev_version }}"
+          delete-branch: true
+          add-paths: |
+            package.json
+            package-lock.json

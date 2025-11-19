@@ -1,0 +1,105 @@
+name: Tag Version Validation
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate:
+    name: Ensure tag matches package version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Check tag against package.json
+        id: check
+        run: |
+          TAG_NAME="${GITHUB_REF##*/}"
+          TAG_VERSION="${TAG_NAME#v}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${PACKAGE_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [ "${TAG_VERSION}" != "${PACKAGE_VERSION}" ]; then
+            echo "mismatch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mismatch=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const tag = process.env.TAG_VERSION.replace(/^v/, '');
+          function nextPatch(version) {
+            const [major, minor, patchPart] = version.split('.');
+            const numericPatch = parseInt(patchPart.split('-')[0], 10);
+            return `${major}.${minor}.${numericPatch + 1}`;
+          }
+          const corrected = nextPatch(tag);
+          fs.writeFileSync('/tmp/correction-version', corrected);
+          NODE
+
+          CORRECTION_VERSION=$(cat /tmp/correction-version)
+          echo "correction_version=${CORRECTION_VERSION}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG_VERSION: ${{ github.ref_name }}
+
+      - name: Prepare correction pull request when mismatched
+        if: steps.check.outputs.mismatch == 'true'
+        run: |
+          TARGET_VERSION=${{ steps.check.outputs.correction_version }}
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const version = process.env.TARGET_VERSION;
+          const pkgPath = path.join(process.cwd(), 'package.json');
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          pkg.version = version;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+          const lockPath = path.join(process.cwd(), 'package-lock.json');
+          if (fs.existsSync(lockPath)) {
+            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+            lock.version = version;
+            if (lock.packages && lock.packages['']) {
+              lock.packages[''].version = version;
+            }
+            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+          }
+          NODE
+        env:
+          TARGET_VERSION: ${{ steps.check.outputs.correction_version }}
+
+      - name: Open correction pull request
+        if: steps.check.outputs.mismatch == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: correct package version to ${{ steps.check.outputs.correction_version }}"
+          title: "chore: correct package version to ${{ steps.check.outputs.correction_version }}"
+          body: |
+            The tag `${{ steps.check.outputs.tag_version }}` does not match the package version `${{ steps.check.outputs.package_version }}`.
+
+            This PR removes the `-next` suffix and bumps to `${{ steps.check.outputs.correction_version }}` to realign future releases with the published tag.
+          branch: "chore/fix-version-${{ steps.check.outputs.correction_version }}"
+          delete-branch: true
+          add-paths: |
+            package.json
+            package-lock.json
+
+      - name: Fail when tag and package versions differ
+        if: steps.check.outputs.mismatch == 'true'
+        run: |
+          echo "Tag version does not match package version. A correction PR has been opened." >&2
+          exit 1
