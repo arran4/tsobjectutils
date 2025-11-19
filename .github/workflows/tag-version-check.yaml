@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,6 +53,8 @@ jobs:
 
           CORRECTION_VERSION=$(cat /tmp/correction-version)
           echo "correction_version=${CORRECTION_VERSION}" >> "$GITHUB_OUTPUT"
+          NEXT_DEV_VERSION="${CORRECTION_VERSION}-next"
+          echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
         env:
           TAG_VERSION: ${{ github.ref_name }}
 
@@ -103,3 +106,88 @@ jobs:
         run: |
           echo "Tag version does not match package version. A correction PR has been opened." >&2
           exit 1
+
+      - name: Ensure GitHub release exists
+        if: steps.check.outputs.mismatch == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tagName = context.ref.replace('refs/tags/', '');
+            const { owner, repo } = context.repo;
+
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo });
+            const existing = releases.find((release) => release.tag_name === tagName);
+
+            if (existing) {
+              core.info(`Release for ${tagName} already exists.`);
+              return;
+            }
+
+            await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tagName,
+              name: tagName,
+              generate_release_notes: true,
+              draft: false,
+            });
+            core.info(`Created release for ${tagName}.`);
+
+      - name: Setup Node.js for publishing
+        if: steps.check.outputs.mismatch == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish package to npm
+        if: steps.check.outputs.mismatch == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm publish --access=public
+
+      - name: Prepare next -next development version
+        if: steps.check.outputs.mismatch == 'false' && !contains(steps.check.outputs.tag_version, '-next')
+        run: |
+          NEXT_DEV_VERSION=${{ steps.check.outputs.next_dev_version }}
+          export NEXT_DEV_VERSION
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const nextVersion = process.env.NEXT_DEV_VERSION;
+          const pkgPath = path.join(process.cwd(), 'package.json');
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          pkg.version = nextVersion;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+          const lockPath = path.join(process.cwd(), 'package-lock.json');
+          if (fs.existsSync(lockPath)) {
+            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+            lock.version = nextVersion;
+            if (lock.packages && lock.packages['']) {
+              lock.packages[''].version = nextVersion;
+            }
+            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Create next iteration pull request
+        if: steps.check.outputs.mismatch == 'false' && !contains(steps.check.outputs.tag_version, '-next')
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: prepare ${{ steps.check.outputs.next_dev_version }}"
+          title: "chore: prepare ${{ steps.check.outputs.next_dev_version }}"
+          body: |
+            This pull request prepares the repository for the next development cycle following `${{ steps.check.outputs.tag_version }}`.
+
+            * Publishes `${{ steps.check.outputs.tag_version }}` to npm
+            * Bumps the package version to `${{ steps.check.outputs.next_dev_version }}` to continue `-next` development.
+          branch: "chore/prepare-${{ steps.check.outputs.next_dev_version }}"
+          delete-branch: true
+          add-paths: |
+            package.json
+            package-lock.json
