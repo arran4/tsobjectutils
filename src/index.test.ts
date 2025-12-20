@@ -42,6 +42,21 @@ import {
     GetBigIntPropOrThrow,
     GetBigIntPropOrDefault,
     GetBigIntPropOrDefaultFunction,
+    GetNumberArrayPropOrDefault,
+    GetNumberArrayPropOrDefaultFunction,
+    GetNumberArrayPropOrThrow,
+    GetBooleanArrayPropOrDefault,
+    GetBooleanArrayPropOrDefaultFunction,
+    GetBooleanArrayPropOrThrow,
+    GetBigIntArrayPropOrDefault,
+    GetBigIntArrayPropOrDefaultFunction,
+    GetBigIntArrayPropOrThrow,
+    GetTypedNumberArrayPropOrDefault,
+    GetTypedNumberArrayPropOrThrow,
+    GetTypedBooleanArrayPropOrDefault,
+    GetTypedBooleanArrayPropOrThrow,
+    GetTypedBigIntArrayPropOrDefault,
+    GetTypedBigIntArrayPropOrThrow,
     GetObjectPropOrThrowAllowNull,
     GetObjectFunctionPropOrThrowAllowNull,
     GetObjectPropOrDefaultAllowNull,
@@ -143,6 +158,59 @@ describe("date array", () => {
         expect(() => GetDateArrayPropOrThrow({ }, "A")).toThrow()
     })
 })
+
+describe("number array", () => {
+    test("PropOrDefaultFunction", () => {
+        expect(GetNumberArrayPropOrDefaultFunction({ A: [1, 2, 3] }, "A", () => null)).toEqual([1, 2, 3]);
+        expect(GetNumberArrayPropOrDefaultFunction({ A: ["1", "2"] }, "A", () => null)).toEqual([1, 2]);
+        expect(GetNumberArrayPropOrDefaultFunction({}, "A", () => null)).toBeNull();
+    });
+    test("PropOrDefault", () => {
+        expect(GetNumberArrayPropOrDefault({ A: [1, 2] }, "A", null)).toEqual([1, 2]);
+        expect(GetNumberArrayPropOrDefault({ A: ["3", "4"] }, "A", null)).toEqual([3, 4]);
+        expect(GetNumberArrayPropOrDefault({}, "A", null)).toBeNull();
+    });
+    test("PropOrThrow", () => {
+        expect(GetNumberArrayPropOrThrow({ A: [1] }, "A")).toEqual([1]);
+        expect(GetNumberArrayPropOrThrow({ A: ["2"] }, "A")).toEqual([2]);
+        expect(() => GetNumberArrayPropOrThrow({}, "A")).toThrow();
+        expect(GetNumberArrayPropOrThrow({ A: ["nan"] }, "A")).toEqual([NaN]); // or throw? GetNumberPropOrThrow returns NaN for invalid string
+    });
+});
+
+describe("boolean array", () => {
+    test("PropOrDefaultFunction", () => {
+        expect(GetBooleanArrayPropOrDefaultFunction({ A: [true, false] }, "A", () => null)).toEqual([true, false]);
+        expect(GetBooleanArrayPropOrDefaultFunction({}, "A", () => null)).toBeNull();
+    });
+    test("PropOrDefault", () => {
+        expect(GetBooleanArrayPropOrDefault({ A: [true] }, "A", null)).toEqual([true]);
+        expect(GetBooleanArrayPropOrDefault({}, "A", null)).toBeNull();
+    });
+    test("PropOrThrow", () => {
+        expect(GetBooleanArrayPropOrThrow({ A: [true] }, "A")).toEqual([true]);
+        expect(() => GetBooleanArrayPropOrThrow({ A: ["true"] }, "A")).toThrow(); // Default doesn't convert strings
+        expect(() => GetBooleanArrayPropOrThrow({}, "A")).toThrow();
+    });
+});
+
+describe("bigint array", () => {
+    test("PropOrDefaultFunction", () => {
+        expect(GetBigIntArrayPropOrDefaultFunction({ A: [1n, 2n] }, "A", () => null)).toEqual([1n, 2n]);
+        expect(GetBigIntArrayPropOrDefaultFunction({ A: [1, "2"] }, "A", () => null)).toEqual([1n, 2n]);
+        expect(GetBigIntArrayPropOrDefaultFunction({}, "A", () => null)).toBeNull();
+    });
+    test("PropOrDefault", () => {
+        expect(GetBigIntArrayPropOrDefault({ A: [1n] }, "A", null)).toEqual([1n]);
+        expect(GetBigIntArrayPropOrDefault({ A: ["2"] }, "A", null)).toEqual([2n]);
+        expect(GetBigIntArrayPropOrDefault({}, "A", null)).toBeNull();
+    });
+    test("PropOrThrow", () => {
+        expect(GetBigIntArrayPropOrThrow({ A: [1n] }, "A")).toEqual([1n]);
+        expect(GetBigIntArrayPropOrThrow({ A: [2] }, "A")).toEqual([2n]);
+        expect(() => GetBigIntArrayPropOrThrow({}, "A")).toThrow();
+    });
+});
 
 class TestObject {
     constructor(
@@ -289,6 +357,9 @@ describe("typed helpers", () => {
         labels: string[];
         timestamps: Date[];
         active: boolean;
+        numbers: number[];
+        booleans: boolean[];
+        bigints: bigint[];
     }
 
     const typedProps: PropsFor<TypedPropsExample> = {
@@ -298,6 +369,9 @@ describe("typed helpers", () => {
         labels: [1, "two"],
         timestamps: ["2023-01-01", 5],
         active: "Y",
+        numbers: ["1", 2],
+        booleans: [true, false],
+        bigints: [1, "2"],
     };
 
     test("typed throw conversions", () => {
@@ -307,6 +381,9 @@ describe("typed helpers", () => {
         expect(GetTypedStringArrayPropOrThrow<TypedPropsExample>(typedProps, "labels")).toEqual(["1", "two"]);
         expect(GetTypedDateArrayPropOrThrow<TypedPropsExample>(typedProps, "timestamps")).toEqual([new Date("2023-01-01"), new Date(5 * 1000)]);
         expect(GetTypedBooleanPropOrThrow<TypedPropsExample>(typedProps, "active", (v: unknown) => v === "Y")).toBe(true);
+        expect(GetTypedNumberArrayPropOrThrow<TypedPropsExample>(typedProps, "numbers")).toEqual([1, 2]);
+        expect(GetTypedBooleanArrayPropOrThrow<TypedPropsExample>(typedProps, "booleans")).toEqual([true, false]);
+        expect(GetTypedBigIntArrayPropOrThrow<TypedPropsExample>(typedProps, "bigints")).toEqual([1n, 2n]);
     });
 
     test("typed defaults", () => {
@@ -317,5 +394,8 @@ describe("typed helpers", () => {
         expect(GetTypedStringArrayPropOrDefault<TypedPropsExample>(emptyProps, "labels", null)).toBeNull();
         expect(GetTypedDateArrayPropOrDefault<TypedPropsExample>(emptyProps, "timestamps", null)).toBeNull();
         expect(GetTypedBooleanPropOrDefault<TypedPropsExample>(emptyProps, "active", false)).toBe(false);
+        expect(GetTypedNumberArrayPropOrDefault<TypedPropsExample>(emptyProps, "numbers", null)).toBeNull();
+        expect(GetTypedBooleanArrayPropOrDefault<TypedPropsExample>(emptyProps, "booleans", null)).toBeNull();
+        expect(GetTypedBigIntArrayPropOrDefault<TypedPropsExample>(emptyProps, "bigints", null)).toBeNull();
     });
 });
