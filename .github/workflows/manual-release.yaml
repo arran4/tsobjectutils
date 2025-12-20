@@ -1,0 +1,62 @@
+name: Manual Release Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'Version Bump Level'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Release as a prerelease (next)?'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump Version
+        id: bump
+        run: |
+          LEVEL="${{ inputs.level }}"
+          IS_PRE="${{ inputs.prerelease }}"
+
+          if [ "$IS_PRE" == "true" ]; then
+            # Bump to next prerelease version
+            npm version pre$LEVEL --preid=next --no-git-tag-version
+          else
+            # Bump to next standard version
+            npm version $LEVEL --no-git-tag-version
+          fi
+
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and Push
+        run: |
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          git push origin HEAD:main

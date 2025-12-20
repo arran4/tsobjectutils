@@ -55,10 +55,16 @@ jobs:
             echo "version_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ "${CURRENT_VERSION}" != *-next && "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]]; then
+          if [[ "${CURRENT_VERSION}" != *-* && "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]]; then
             echo "prepare_next=true" >> "$GITHUB_OUTPUT"
           else
             echo "prepare_next=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${CURRENT_VERSION}" == *-* ]]; then
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
           node <<'NODE'
@@ -124,7 +130,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          npm publish --access=public
+          npm publish --access=public --tag ${{ steps.versions.outputs.npm_tag }}
 
       - name: Prepare next -next development version
         if: steps.versions.outputs.prepare_next == 'true'

@@ -22,25 +22,31 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           if [[ "${VERSION}" == *-next ]]; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "is_placeholder=true" >> "$GITHUB_OUTPUT"
           else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "is_placeholder=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip publish for prerelease versions
-        if: steps.package-version.outputs.is_prerelease == 'true'
-        run: echo "Skipping npm publish for prerelease version ${{ steps.package-version.outputs.version }}"
+          if [[ "${VERSION}" == *-* ]]; then
+             echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+          else
+             echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip publish for placeholder versions
+        if: steps.package-version.outputs.is_placeholder == 'true'
+        run: echo "Skipping npm publish for placeholder version ${{ steps.package-version.outputs.version }}"
       # Setup .npmrc file to publish to npm
       - uses: actions/setup-node@v3
-        if: steps.package-version.outputs.is_prerelease != 'true'
+        if: steps.package-version.outputs.is_placeholder != 'true'
         with:
           node-version: '18.x'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-        if: steps.package-version.outputs.is_prerelease != 'true'
+        if: steps.package-version.outputs.is_placeholder != 'true'
       - run: npm run build
-        if: steps.package-version.outputs.is_prerelease != 'true'
-      - run: npm publish --access=public
-        if: steps.package-version.outputs.is_prerelease != 'true'
+        if: steps.package-version.outputs.is_placeholder != 'true'
+      - run: npm publish --access=public --tag ${{ steps.package-version.outputs.npm_tag }}
+        if: steps.package-version.outputs.is_placeholder != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
