@@ -189,20 +189,40 @@ jobs:
             await ensureTag();
 
             // Check if release exists
+            let releaseExists = false;
             try {
               await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
               core.info(`Release for ${tagName} already exists.`);
+              releaseExists = true;
             } catch (error) {
-               await github.rest.repos.createRelease({
-                owner,
-                repo,
-                tag_name: tagName,
-                name: tagName,
-                generate_release_notes: true,
-                draft: false,
-                prerelease: ${{ steps.versions.outputs.is_prerelease }}
-              });
-              core.info(`Release for ${tagName} created.`);
+              if (error.status !== 404) {
+                 core.warning(`Error checking for release: ${error.message}`);
+              }
+            }
+
+            if (!releaseExists) {
+               try {
+                   await github.rest.repos.createRelease({
+                    owner,
+                    repo,
+                    tag_name: tagName,
+                    name: tagName,
+                    generate_release_notes: true,
+                    draft: false,
+                    prerelease: ${{ steps.versions.outputs.is_prerelease }}
+                  });
+                  core.info(`Release for ${tagName} created.`);
+               } catch (error) {
+                  // Handle "already_exists"
+                  if (error.response && error.response.data && error.response.data.errors) {
+                    const alreadyExists = error.response.data.errors.some(e => e.code === 'already_exists');
+                    if (alreadyExists) {
+                       core.info(`Release for ${tagName} already exists (caught during creation).`);
+                       return;
+                    }
+                  }
+                  throw error;
+               }
             }
 
       - name: Setup Node.js for publishing
