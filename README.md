@@ -98,6 +98,11 @@ Use `npm test` to run the Jest suite and verify the utilities.
 - [npm package](https://www.npmjs.com/package/@arran4/tsobjectutils)
 - [repository](https://github.com/arran4/tsobjectutils)
 
+## Related Projects
+
+- [dartobjectutils](https://github.com/arran4/dartobjectutils)
+- [go-objectutils](https://github.com/arran4/go-objectutils)
+
 ## Definitions
 
 <!-- grep 'export' src/index.ts | sed 's/ *{$/;/' | sort -->
