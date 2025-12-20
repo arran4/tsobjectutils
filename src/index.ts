@@ -11,8 +11,12 @@ export type PropsFromType<Type> =
     Type extends number ? number | string :
     Type extends Date ? Date | number | string :
     Type extends string[] ? Array<string | number> :
+    Type extends number[] ? Array<number | string> :
+    Type extends boolean[] ? Array<boolean | string | number> :
+    Type extends bigint[] ? Array<bigint | string | number> :
     Type extends Date[] ? Array<Date | number | string> :
     Type extends boolean ? boolean | string | number :
+    Type extends bigint ? bigint | string | number :
     Type;
 
 export type PropsFor<T> = Partial<{ [K in keyof T]: PropsFromType<T[K]> }>;
@@ -94,6 +98,38 @@ export function GetNumberPropOrThrow<R extends number | null>(props: Record<stri
         }
     }
     throw new Error(message ?? `${prop} not found as number in ${typeof props}`)
+}
+
+export function GetNumberArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): number[] | R {
+    try {
+        return GetNumberArrayPropOrThrow(props, prop)
+    } catch {
+    }
+    return defaultFunction();
+}
+
+export function GetNumberArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): number[] | R {
+    return GetNumberArrayPropOrDefaultFunction(props, prop, () => defaultValue);
+}
+
+export function GetNumberArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string, message? : string): number[] {
+    if (props) {
+        if (prop in props) {
+            const v = props[prop];
+            if (Array.isArray(v)) {
+                return v.map((v) => {
+                    if (typeof v === 'number') {
+                        return v
+                    }
+                    if (typeof v === 'string') {
+                        return +v
+                    }
+                    throw new Error(`Unknown type for number ${v} ${typeof (v)}`)
+                })
+            }
+        }
+    }
+    throw new Error(message ?? `${prop} not found as number[] in ${typeof props}`)
 }
 
 export function GetDatePropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R | Date {
@@ -302,6 +338,67 @@ export function GetBooleanFunctionPropOrDefault(props:Record<string, unknown> | 
     return GetBooleanFunctionPropOrDefaultFunction(props, prop, constructorFunc, () => defaultValue);
 }
 
+export function GetBooleanArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): boolean[] | R {
+    try {
+        return GetBooleanArrayPropOrThrow(props, prop)
+    } catch {
+    }
+    return defaultFunction();
+}
+
+export function GetBooleanArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): boolean[] | R {
+    return GetBooleanArrayPropOrDefaultFunction(props, prop, () => defaultValue);
+}
+
+export function GetBooleanArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string, message? : string): boolean[] {
+    if (props) {
+        if (prop in props) {
+            const v = props[prop];
+            if (Array.isArray(v)) {
+                return v.map((v) => {
+                    if (typeof v === 'boolean') {
+                        return v
+                    }
+                    throw new Error(`Unknown type for boolean ${v} ${typeof (v)}`)
+                })
+            }
+        }
+    }
+    throw new Error(message ?? `${prop} not found as boolean[] in ${typeof props}`)
+}
+
+export function GetBigIntArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): bigint[] | R {
+    try {
+        return GetBigIntArrayPropOrThrow(props, prop)
+    } catch {
+    }
+    return defaultFunction();
+}
+
+export function GetBigIntArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): bigint[] | R {
+    return GetBigIntArrayPropOrDefaultFunction(props, prop, () => defaultValue);
+}
+
+export function GetBigIntArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string, message? : string): bigint[] {
+    if (props) {
+        if (prop in props) {
+            const v = props[prop];
+            if (Array.isArray(v)) {
+                return v.map((v) => {
+                    if (typeof v === 'bigint') {
+                        return v;
+                    }
+                    if (typeof v === 'number' || typeof v === 'string') {
+                        return BigInt(v);
+                    }
+                    throw new Error(`Unknown type for BigInt ${v} ${typeof (v)}`)
+                })
+            }
+        }
+    }
+    throw new Error(message ?? `${prop} not found as bigint[] in ${typeof props}`)
+}
+
 // Typed helpers using PropsFor/TypeInType to mirror the abandoned typed branch.
 export function GetTypedStringPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string>, message?: string): string {
     return GetStringPropOrThrow<string>(props as Record<string, unknown> | undefined | null, prop as string, message);
@@ -317,6 +414,14 @@ export function GetTypedNumberPropOrThrow<T>(props: PropsFor<T> | undefined | nu
 
 export function GetTypedNumberPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, number>, defaultValue: number | null): number | null {
     return GetNumberPropOrDefault<number | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedNumberArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, number[]>): number[] {
+    return GetNumberArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedNumberArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, number[]>, defaultValue: number[] | null): number[] | null {
+    return GetNumberArrayPropOrDefault<number[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
 }
 
 export function GetTypedDatePropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, Date>): Date {
@@ -351,6 +456,21 @@ export function GetTypedBooleanPropOrDefault<T>(props: PropsFor<T> | undefined |
     return GetBooleanPropOrDefault(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
 }
 
+export function GetTypedBooleanArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, boolean[]>): boolean[] {
+    return GetBooleanArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedBooleanArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, boolean[]>, defaultValue: boolean[] | null): boolean[] | null {
+    return GetBooleanArrayPropOrDefault<boolean[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedBigIntArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, bigint[]>): bigint[] {
+    return GetBigIntArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedBigIntArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, bigint[]>, defaultValue: bigint[] | null): bigint[] | null {
+    return GetBigIntArrayPropOrDefault<bigint[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
 
 export function GetMapPropOrThrow<K, V>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): Map<K, V> {
     if (props) {
