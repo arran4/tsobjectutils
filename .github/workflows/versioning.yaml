@@ -1,5 +1,22 @@
 name: Version and Release Automation
 
+# Documentation:
+# This workflow handles the automated releasing of the package.
+# It can be triggered automatically by pushing to main or creating a tag.
+#
+# MANUAL RELEASE:
+# If you want to manually release a new version, go to the "Actions" tab, select "Version and Release Automation",
+# and click "Run workflow". You can select:
+# - Level: patch, minor, major, or prerelease.
+# - Create Prerelease: Check this if you want the version to be a prerelease (e.g. 1.0.1-next.0).
+#
+# The workflow will:
+# 1. Bump the version in package.json (if manual).
+# 2. Push the bump to main (if manual).
+# 3. Create a GitHub Release and Tag.
+# 4. Publish to NPM (tag 'next' for prereleases, 'latest' for stable).
+# 5. Prepare the next development version (bump to next patch + '-next') and create a PR (only for stable releases).
+
 on:
   push:
     branches:
@@ -9,6 +26,22 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      level:
+        description: 'Version Bump Level'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+      create_prerelease:
+        description: 'Create as a prerelease (e.g. -next.0)?'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   release:
@@ -22,15 +55,52 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Manual Version Bump
+        if: github.event_name == 'workflow_dispatch'
+        id: manual_bump
+        run: |
+          LEVEL="${{ inputs.level }}"
+          CREATE_PRE="${{ inputs.create_prerelease }}"
+
+          if [ "$LEVEL" == "prerelease" ]; then
+             # User specifically asked for prerelease bump (e.g. 1.0.0-next.0 -> 1.0.0-next.1)
+             npm version prerelease --preid=next --no-git-tag-version
+          elif [ "$CREATE_PRE" == "true" ]; then
+             # User asked for level (e.g. patch) but as prerelease (e.g. 1.0.0 -> 1.0.1-next.0)
+             npm version pre$LEVEL --preid=next --no-git-tag-version
+          else
+             # Standard stable bump (e.g. 1.0.0 -> 1.0.1)
+             npm version $LEVEL --no-git-tag-version
+          fi
+
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "Bumping to $NEW_VERSION"
+
+          # Commit and Push
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to $NEW_VERSION"
+          git push origin HEAD:main
+
+          NEW_SHA=$(git rev-parse HEAD)
+          echo "manual_bump_occurred=true" >> "$GITHUB_OUTPUT"
+          echo "new_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Determine package version changes
         id: versions
         run: |
+          # If we just bumped manually, package.json is already updated on disk.
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           export CURRENT_VERSION
           echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
@@ -40,6 +110,10 @@ jobs:
           else
             echo "allow_publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+          # If manual bump occurred, HEAD is the bump commit. HEAD^ is the old version.
+          # If push event, HEAD is the push. HEAD^ is previous.
+          # We need to make sure we can compare correctly.
 
           if git show HEAD^:package.json > /tmp/prev-package.json 2>/dev/null; then
             PREVIOUS_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/prev-package.json','utf8')).version")
@@ -63,8 +137,10 @@ jobs:
 
           if [[ "${CURRENT_VERSION}" == *-* ]]; then
             echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
           node <<'NODE'
@@ -83,7 +159,8 @@ jobs:
           echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create git tag and GitHub release
-        if: steps.versions.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
+        # Run if version changed OR if manually dispatched (redundant check if bump worked, but safe)
+        if: steps.versions.outputs.version_changed == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -100,31 +177,43 @@ jobs:
                 await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
                 core.info(`Tag ${tagName} already exists.`);
               } catch (error) {
-                await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tagName}`, sha: context.sha });
-                core.info(`Created tag ${tagName}.`);
+                // If we manually bumped and pushed, the SHA is the current HEAD (which is the bump commit)
+                const sha = '${{ steps.manual_bump.outputs.manual_bump_occurred }}' === 'true'
+                  ? '${{ steps.manual_bump.outputs.new_sha }}'
+                  : context.sha;
+                await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tagName}`, sha });
+                core.info(`Created tag ${tagName} at ${sha}.`);
               }
             }
 
             await ensureTag();
-            await github.rest.repos.createRelease({
-              owner,
-              repo,
-              tag_name: tagName,
-              name: tagName,
-              generate_release_notes: true,
-              draft: false
-            });
-            core.info(`Release for ${tagName} created.`);
+
+            // Check if release exists
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
+              core.info(`Release for ${tagName} already exists.`);
+            } catch (error) {
+               await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tagName,
+                name: tagName,
+                generate_release_notes: true,
+                draft: false,
+                prerelease: ${{ steps.versions.outputs.is_prerelease }}
+              });
+              core.info(`Release for ${tagName} created.`);
+            }
 
       - name: Setup Node.js for publishing
-        if: (steps.versions.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch') && steps.versions.outputs.allow_publish == 'true'
+        if: steps.versions.outputs.version_changed == 'true' && steps.versions.outputs.allow_publish == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish package to npm
-        if: (steps.versions.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch') && steps.versions.outputs.allow_publish == 'true'
+        if: steps.versions.outputs.version_changed == 'true' && steps.versions.outputs.allow_publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
