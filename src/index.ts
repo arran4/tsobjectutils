@@ -10,11 +10,13 @@ export type PropsFromType<Type> =
     Type extends string ? string | number :
     Type extends number ? number | string :
     Type extends Date ? Date | number | string :
+    Type extends RegExp ? RegExp | string :
     Type extends string[] ? Array<string | number> :
     Type extends number[] ? Array<number | string> :
     Type extends boolean[] ? Array<boolean | string | number> :
     Type extends bigint[] ? Array<bigint | string | number> :
     Type extends Date[] ? Array<Date | number | string> :
+    Type extends RegExp[] ? Array<RegExp | string> :
     Type extends boolean ? boolean | string | number :
     Type extends bigint ? bigint | string | number :
     Type;
@@ -399,6 +401,65 @@ export function GetBigIntArrayPropOrThrow(props: Record<string, unknown> | undef
     throw new Error(message ?? `${prop} not found as bigint[] in ${typeof props}`)
 }
 
+export function GetRegExpPropOrDefaultFunction<R extends RegExp | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R {
+    try {
+        return GetRegExpPropOrThrow<R>(props, prop)
+    } catch {
+    }
+    return defaultFunction();
+}
+
+export function GetRegExpPropOrDefault<R extends RegExp | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): R {
+    return GetRegExpPropOrDefaultFunction<R>(props, prop, () => defaultValue);
+}
+
+export function GetRegExpPropOrThrow<R extends RegExp | null>(props: Record<string, unknown> | undefined | null, prop: string, message? : string): R {
+    if (props) {
+        if (prop in props) {
+            const v = props[prop];
+            if (v instanceof RegExp) {
+                return v as R
+            }
+            if (typeof v === 'string') {
+                return new RegExp(v) as R
+            }
+        }
+    }
+    throw new Error(message ?? `${prop} not found as RegExp in ${typeof props}`)
+}
+
+export function GetRegExpArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): RegExp[] | R {
+    try {
+        return GetRegExpArrayPropOrThrow(props, prop)
+    } catch {
+    }
+    return defaultFunction();
+}
+
+export function GetRegExpArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): RegExp[] | R {
+    return GetRegExpArrayPropOrDefaultFunction(props, prop, () => defaultValue);
+}
+
+export function GetRegExpArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string, message? : string): RegExp[] {
+    if (props) {
+        if (prop in props) {
+            const v = props[prop];
+            if (Array.isArray(v)) {
+                return v.map((v) => {
+                    if (v instanceof RegExp) {
+                        return v
+                    }
+                    if (typeof v === 'string') {
+                        return new RegExp(v)
+                    }
+                    throw new Error(`Unknown type for RegExp ${v} ${typeof (v)}`)
+                })
+            }
+        }
+    }
+    throw new Error(message ?? `${prop} not found as RegExp[] in ${typeof props}`)
+}
+
 // Typed helpers using PropsFor/TypeInType to mirror the abandoned typed branch.
 export function GetTypedStringPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, string>, message?: string): string {
     return GetStringPropOrThrow<string>(props as Record<string, unknown> | undefined | null, prop as string, message);
@@ -470,6 +531,22 @@ export function GetTypedBigIntArrayPropOrThrow<T>(props: PropsFor<T> | undefined
 
 export function GetTypedBigIntArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, bigint[]>, defaultValue: bigint[] | null): bigint[] | null {
     return GetBigIntArrayPropOrDefault<bigint[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedRegExpPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, RegExp>, message?: string): RegExp {
+    return GetRegExpPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string, message);
+}
+
+export function GetTypedRegExpPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, RegExp>, defaultValue: RegExp | null): RegExp | null {
+    return GetRegExpPropOrDefault<RegExp | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
+}
+
+export function GetTypedRegExpArrayPropOrThrow<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, RegExp[]>): RegExp[] {
+    return GetRegExpArrayPropOrThrow(props as Record<string, unknown> | undefined | null, prop as string);
+}
+
+export function GetTypedRegExpArrayPropOrDefault<T>(props: PropsFor<T> | undefined | null, prop: keyof TypeInType<T, RegExp[]>, defaultValue: RegExp[] | null): RegExp[] | null {
+    return GetRegExpArrayPropOrDefault<RegExp[] | null>(props as Record<string, unknown> | undefined | null, prop as string, defaultValue);
 }
 
 export function GetMapPropOrThrow<K, V>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): Map<K, V> {
