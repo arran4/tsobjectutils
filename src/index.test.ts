@@ -62,7 +62,17 @@ import {
     GetObjectPropOrDefaultAllowNull,
     GetObjectFunctionPropOrDefaultAllowNull,
     GetObjectPropOrDefaultFunctionAllowNull,
-    PropsFor
+    PropsFor,
+    GetRegExpPropOrDefaultFunction,
+    GetRegExpPropOrDefault,
+    GetRegExpPropOrThrow,
+    GetRegExpArrayPropOrDefaultFunction,
+    GetRegExpArrayPropOrDefault,
+    GetRegExpArrayPropOrThrow,
+    GetTypedRegExpPropOrThrow,
+    GetTypedRegExpPropOrDefault,
+    GetTypedRegExpArrayPropOrThrow,
+    GetTypedRegExpArrayPropOrDefault
 } from "./index";
 
 describe("strings", () => {
@@ -349,6 +359,42 @@ describe("object allow null", () => {
     })
 })
 
+describe("regexp", () => {
+    test("PropOrDefaultFunction", () => {
+        expect(GetRegExpPropOrDefaultFunction({ A: /abc/ }, "A", () => null)).toEqual(/abc/)
+        expect(GetRegExpPropOrDefaultFunction({ A: "abc" }, "A", () => null)).toEqual(/abc/)
+        expect(GetRegExpPropOrDefaultFunction({ }, "A", () => null)).toBeNull()
+    })
+    test("PropOrDefault", () => {
+        expect(GetRegExpPropOrDefault({ A: /abc/ }, "A", null)).toEqual(/abc/)
+        expect(GetRegExpPropOrDefault({ A: "abc" }, "A", null)).toEqual(/abc/)
+        expect(GetRegExpPropOrDefault({ }, "A", null)).toBeNull()
+    })
+    test("PropOrThrow", () => {
+        expect(GetRegExpPropOrThrow({A:/abc/ }, "A")).toEqual(/abc/)
+        expect(GetRegExpPropOrThrow({ A: "abc" }, "A")).toEqual(/abc/)
+        expect(() => GetRegExpPropOrThrow({ }, "A")).toThrow()
+    })
+})
+
+describe("regexp array", () => {
+    test("PropOrDefaultFunction", () => {
+        expect(GetRegExpArrayPropOrDefaultFunction({ A: [/abc/] }, "A", () => null)).toEqual([/abc/])
+        expect(GetRegExpArrayPropOrDefaultFunction({ A: ["abc"] }, "A", () => null)).toEqual([/abc/])
+        expect(GetRegExpArrayPropOrDefaultFunction({ }, "A", () => null)).toBeNull()
+    })
+    test("PropOrDefault", () => {
+        expect(GetRegExpArrayPropOrDefault({ A: [/abc/] }, "A", null)).toEqual([/abc/])
+        expect(GetRegExpArrayPropOrDefault({ A: ["abc"] }, "A", null)).toEqual([/abc/])
+        expect(GetRegExpArrayPropOrDefault({ }, "A", null)).toBeNull()
+    })
+    test("PropOrThrow", () => {
+        expect(GetRegExpArrayPropOrThrow({A:[/abc/] }, "A")).toEqual([/abc/])
+        expect(GetRegExpArrayPropOrThrow({ A: ["abc"] }, "A")).toEqual([/abc/])
+        expect(() => GetRegExpArrayPropOrThrow({ }, "A")).toThrow()
+    })
+})
+
 describe("typed helpers", () => {
     interface TypedPropsExample {
         name: string;
@@ -360,6 +406,8 @@ describe("typed helpers", () => {
         numbers: number[];
         booleans: boolean[];
         bigints: bigint[];
+        regex: RegExp;
+        regexes: RegExp[];
     }
 
     const typedProps: PropsFor<TypedPropsExample> = {
@@ -372,6 +420,8 @@ describe("typed helpers", () => {
         numbers: ["1", 2],
         booleans: [true, false],
         bigints: [1, "2"],
+        regex: "abc",
+        regexes: ["abc", /def/],
     };
 
     test("typed throw conversions", () => {
@@ -384,6 +434,8 @@ describe("typed helpers", () => {
         expect(GetTypedNumberArrayPropOrThrow<TypedPropsExample>(typedProps, "numbers")).toEqual([1, 2]);
         expect(GetTypedBooleanArrayPropOrThrow<TypedPropsExample>(typedProps, "booleans")).toEqual([true, false]);
         expect(GetTypedBigIntArrayPropOrThrow<TypedPropsExample>(typedProps, "bigints")).toEqual([1n, 2n]);
+        expect(GetTypedRegExpPropOrThrow<TypedPropsExample>(typedProps, "regex")).toEqual(/abc/);
+        expect(GetTypedRegExpArrayPropOrThrow<TypedPropsExample>(typedProps, "regexes")).toEqual([/abc/, /def/]);
     });
 
     test("typed defaults", () => {
@@ -397,5 +449,7 @@ describe("typed helpers", () => {
         expect(GetTypedNumberArrayPropOrDefault<TypedPropsExample>(emptyProps, "numbers", null)).toBeNull();
         expect(GetTypedBooleanArrayPropOrDefault<TypedPropsExample>(emptyProps, "booleans", null)).toBeNull();
         expect(GetTypedBigIntArrayPropOrDefault<TypedPropsExample>(emptyProps, "bigints", null)).toBeNull();
+        expect(GetTypedRegExpPropOrDefault<TypedPropsExample>(emptyProps, "regex", null)).toBeNull();
+        expect(GetTypedRegExpArrayPropOrDefault<TypedPropsExample>(emptyProps, "regexes", null)).toBeNull();
     });
 });
