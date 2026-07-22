@@ -1,0 +1,513 @@
+# Agent rules for generation:
+# https://arran4.github.io/blog/post/2026/006-github-ci-and-deploy/
+# Built using this post as a reference/guide.
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master]
+    # semantic version tags + rc/beta snapshots
+    tags:
+      - 'v*'
+      - 'v*.*.*'
+      - 'v*.*.*-rc*'
+      - 'v*.*.*-beta*'
+      - 'test-*'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+    branches: [main, master]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Pipeline mode"
+        required: true
+        default: "lint-fix"
+        type: choice
+        options:
+          - lint-fix
+          - build
+          - release-major
+          - release-minor
+          - release-patch
+          - release-test
+          - release-rc
+          - release-alpha
+          - monthly-maintenance
+      release_version_override:
+        description: "Optional explicit release version (for example 2.4.0 or 2.4.0-rc.2)"
+        required: false
+        default: ""
+        type: string
+      allow_prs:
+        description: "Allow automation to open pull requests"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # preferred heavy monthly run (quota reset strategy)
+    - cron: '17 3 1 * *'
+    # optional nightly lightweight checks
+    - cron: '41 2 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+  packages: write
+  security-events: write
+
+jobs:
+  route:
+    name: Route event
+    runs-on: ubuntu-latest
+    outputs:
+      run_code_checks: ${{ steps.route.outputs.run_code_checks }}
+      run_pr_meta_checks: ${{ steps.route.outputs.run_pr_meta_checks }}
+      run_cleanup: ${{ steps.route.outputs.run_cleanup }}
+      run_release: ${{ steps.route.outputs.run_release }}
+      is_monthly: ${{ steps.route.outputs.is_monthly }}
+      is_nightly: ${{ steps.route.outputs.is_nightly }}
+    steps:
+      - id: route
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_code_checks=false
+          run_pr_meta_checks=false
+          run_cleanup=false
+          run_release=false
+          is_monthly=false
+          is_nightly=false
+
+          case "${{ github.event_name }}" in
+            push)
+              run_code_checks=true
+              if [[ "${{ github.ref }}" == refs/heads/main || "${{ github.ref }}" == refs/heads/master ]]; then
+                # In versioning.yaml we auto bump if main was updated. We let run_release trigger version-and-release
+                run_release=true
+              fi
+              if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref }}" != refs/tags/test-* ]]; then
+                run_release=true
+              fi
+              ;;
+            pull_request)
+              if [[ "${{ github.event.action }}" == "closed" ]]; then
+                run_cleanup=true
+              else
+                run_pr_meta_checks=true
+                # In practice, also run code checks on PRs so lint/fmt/vet/test
+                # show up directly in the PR UI. Use concurrency to collapse churn.
+                run_code_checks=true
+              fi
+              ;;
+            release)
+              run_release=true
+              ;;
+            workflow_dispatch)
+              run_code_checks=true
+              if [[ "${{ inputs.mode }}" == release-* ]]; then
+                run_release=true
+              fi
+              if [[ "${{ inputs.mode }}" == "monthly-maintenance" ]]; then
+                is_monthly=true
+              fi
+              if [[ "${{ inputs.mode }}" == "lint-fix" ]]; then
+                # Manual lint-fix acts as an on-demand nightly-style maintenance pass.
+                is_nightly=true
+              fi
+              ;;
+            schedule)
+              run_code_checks=true
+              if [[ "${{ github.event.schedule }}" == "17 3 1 * *" ]]; then
+                is_monthly=true
+              fi
+              if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]]; then
+                is_nightly=true
+              fi
+              ;;
+          esac
+
+          echo "run_code_checks=$run_code_checks" >> "$GITHUB_OUTPUT"
+          echo "run_pr_meta_checks=$run_pr_meta_checks" >> "$GITHUB_OUTPUT"
+          echo "run_cleanup=$run_cleanup" >> "$GITHUB_OUTPUT"
+          echo "run_release=$run_release" >> "$GITHUB_OUTPUT"
+          echo "is_monthly=$is_monthly" >> "$GITHUB_OUTPUT"
+          echo "is_nightly=$is_nightly" >> "$GITHUB_OUTPUT"
+
+  gitleaks:
+    name: Secret scan
+    needs: [route]
+    if: ${{ needs.route.outputs.run_cleanup != 'true' && (needs.route.outputs.is_nightly == 'true' || needs.route.outputs.is_monthly == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency review (public/full)
+    needs: [route]
+    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@v4
+
+  node-lint-test:
+    name: Node lint/test
+    needs: [route]
+    if: ${{ needs.route.outputs.run_code_checks == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm test --if-present
+      - name: Build source npm package
+        run: npm pack --json > npm-pack-result.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-source-package
+          retention-days: 1
+          path: |
+            *.tgz
+            npm-pack-result.json
+
+
+  autofix:
+    name: Auto-format and open PR
+    needs: [route]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'lint-fix' && inputs.allow_prs == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Run autofix formatters
+        shell: bash
+        run: |
+          set -euo pipefail
+          if true; then
+            npm ci || true
+            npx prettier . --write || true
+          fi
+
+      - name: Create PR if changes exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes; exiting."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          PARENT_PR="${{ github.event.pull_request.number || 'none' }}"
+          if [ "$PARENT_PR" = "none" ]; then
+            PARENT_PR="${{ github.run_id }}"
+          fi
+          BRANCH="ci/autofix/${{ github.run_id }}-parent-${PARENT_PR}"
+
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "ci: automated formatting fixes"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "ci: automated formatting fixes" \
+            --body "Automated formatting pass. Parent-PR: ${PARENT_PR}" \
+            --base main \
+            --head "$BRANCH" \
+            --label "ci-autofix"
+
+
+  cleanup-autofix-prs:
+    name: Cleanup autofix PRs on parent close
+    needs: [route]
+    if: ${{ needs.route.outputs.run_cleanup == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PARENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr list --state open --search "label:ci-autofix in:title" --json number,headRefName,body | \
+            jq -r '.[] | select(.body | contains("Parent-PR: '"$PARENT_PR"'")) | [.number, .headRefName] | @tsv' | \
+            while IFS=$'\t' read -r pr branch; do
+              gh pr close "$pr" --comment "Closing auto-fix PR because parent PR #$PARENT_PR was closed."
+              git push origin --delete "$branch" || true
+            done
+
+
+  version-and-release:
+    name: Create tag and release on version change
+    needs: [route]
+    if: ${{ needs.route.outputs.run_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Manual Version Bump
+        if: github.event_name == 'workflow_dispatch'
+        id: manual_bump
+        run: |
+          MODE="${{ inputs.mode }}"
+          OVERRIDE="${{ inputs.release_version_override }}"
+
+          if [ -n "$OVERRIDE" ]; then
+             # Remove leading v if present
+             OVERRIDE="${OVERRIDE#v}"
+             npm version "$OVERRIDE" --no-git-tag-version
+          else
+             case "$MODE" in
+               release-major) LEVEL="major"; SUFFIX="" ;;
+               release-minor) LEVEL="minor"; SUFFIX="" ;;
+               release-patch) LEVEL="patch"; SUFFIX="" ;;
+               release-test) LEVEL="prerelease"; SUFFIX="next" ;;
+               release-rc) LEVEL="prerelease"; SUFFIX="rc" ;;
+               release-alpha) LEVEL="prerelease"; SUFFIX="alpha" ;;
+               *) LEVEL=""; SUFFIX="" ;;
+             esac
+             if [ -n "$LEVEL" ]; then
+                if [ "$LEVEL" == "prerelease" ]; then
+                   npm version prerelease --preid="$SUFFIX" --no-git-tag-version
+                else
+                   npm version "$LEVEL" --no-git-tag-version
+                fi
+             fi
+          fi
+
+          # Only push if we actually bumped the version
+          if [ -n "$OVERRIDE" ] || [ -n "$LEVEL" ]; then
+
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            echo "Bumping to $NEW_VERSION"
+
+            git add package.json package-lock.json
+            git commit -m "chore: bump version to $NEW_VERSION"
+            git push origin HEAD:${{ github.ref_name }}
+
+            NEW_SHA=$(git rev-parse HEAD)
+            echo "manual_bump_occurred=true" >> "$GITHUB_OUTPUT"
+            echo "new_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine package version changes
+        id: versions
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION
+          echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${CURRENT_VERSION}" == *-next ]]; then
+            echo "allow_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allow_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git show HEAD^:package.json > /tmp/prev-package.json 2>/dev/null; then
+            PREVIOUS_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/prev-package.json','utf8')).version")
+          else
+            PREVIOUS_VERSION=""
+          fi
+
+          echo "previous_version=${PREVIOUS_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${CURRENT_VERSION}" != *-* && "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]]; then
+            echo "prepare_next=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prepare_next=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${CURRENT_VERSION}" == *-* ]]; then
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const current = process.env.CURRENT_VERSION;
+          function nextPatch(version) {
+            const [major, minor, patchPart] = version.split('.');
+            const numericPatch = parseInt(patchPart.split('-')[0], 10);
+            return `${major}.${minor}.${numericPatch + 1}`;
+          }
+          const nextDev = `${nextPatch(current)}-next`;
+          fs.writeFileSync('/tmp/next-dev-version', nextDev);
+          NODE
+
+          NEXT_DEV_VERSION=$(cat /tmp/next-dev-version)
+          echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create git tag and GitHub release
+        if: steps.versions.outputs.version_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.versions.outputs.current_version }}';
+            if (!version) {
+              core.setFailed('Package version could not be determined.');
+              return;
+            }
+            const tagName = `v${version}`;
+            const { owner, repo } = context.repo;
+
+            async function ensureTag() {
+              try {
+                await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
+                core.info(`Tag ${tagName} already exists.`);
+              } catch (error) {
+                const sha = '${{ steps.manual_bump.outputs.manual_bump_occurred }}' === 'true'
+                  ? '${{ steps.manual_bump.outputs.new_sha }}'
+                  : context.sha;
+                await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tagName}`, sha });
+                core.info(`Created tag ${tagName} at ${sha}.`);
+              }
+            }
+
+            await ensureTag();
+
+            let releaseExists = false;
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
+              core.info(`Release for ${tagName} already exists.`);
+              releaseExists = true;
+            } catch (error) {
+              if (error.status !== 404) {
+                 core.warning(`Error checking for release: ${error.message}`);
+              }
+            }
+
+            if (!releaseExists) {
+               try {
+                   await github.rest.repos.createRelease({
+                    owner,
+                    repo,
+                    tag_name: tagName,
+                    name: tagName,
+                    generate_release_notes: true,
+                    draft: false,
+                    prerelease: ${{ steps.versions.outputs.is_prerelease }}
+                  });
+                  core.info(`Release for ${tagName} created.`);
+               } catch (error) {
+                  if (error.response && error.response.data && error.response.data.errors) {
+                    const alreadyExists = error.response.data.errors.some(e => e.code === 'already_exists');
+                    if (alreadyExists) {
+                       core.info(`Release for ${tagName} already exists (caught during creation).`);
+                       return;
+                    }
+                  }
+                  throw error;
+               }
+            }
+
+      - name: Setup Node.js for publishing
+        if: steps.versions.outputs.version_changed == 'true' && steps.versions.outputs.allow_publish == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish package to npm
+        if: steps.versions.outputs.version_changed == 'true' && steps.versions.outputs.allow_publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm publish --access=public --tag ${{ steps.versions.outputs.npm_tag }}
+
+      - name: Prepare next -next development version
+        if: steps.versions.outputs.prepare_next == 'true'
+        run: |
+          NEXT_DEV_VERSION=${{ steps.versions.outputs.next_dev_version }}
+          export NEXT_DEV_VERSION
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const nextVersion = process.env.NEXT_DEV_VERSION;
+          const pkgPath = path.join(process.cwd(), 'package.json');
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          pkg.version = nextVersion;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+          const lockPath = path.join(process.cwd(), 'package-lock.json');
+          if (fs.existsSync(lockPath)) {
+            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+            lock.version = nextVersion;
+            if (lock.packages && lock.packages['']) {
+              lock.packages[''].version = nextVersion;
+            }
+            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
+          }
+          NODE
+
+      - name: Create next iteration pull request
+        if: steps.versions.outputs.prepare_next == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: prepare ${{ steps.versions.outputs.next_dev_version }}"
+          title: "chore: prepare ${{ steps.versions.outputs.next_dev_version }}"
+          body: |
+            This pull request prepares the repository for the next development cycle.
+
+            * Released version `${{ steps.versions.outputs.current_version }}`
+            * Bumps the package version to `${{ steps.versions.outputs.next_dev_version }}` to continue `-next` development.
+          branch: "chore/prepare-${{ steps.versions.outputs.next_dev_version }}"
+          delete-branch: true
+          add-paths: |
+            package.json
+            package-lock.json
