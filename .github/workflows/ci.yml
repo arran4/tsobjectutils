@@ -52,7 +52,7 @@ on:
     - cron: '41 2 * * *'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
@@ -93,7 +93,7 @@ jobs:
                 # In versioning.yaml we auto bump if main was updated. We let run_release trigger version-and-release
                 run_release=true
               fi
-              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+              if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref }}" != refs/tags/test-* ]]; then
                 run_release=true
               fi
               ;;
