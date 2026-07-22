@@ -52,8 +52,8 @@ on:
     - cron: '41 2 * * *'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: write
@@ -227,7 +227,7 @@ jobs:
 
           PARENT_PR="${{ github.event.pull_request.number || 'none' }}"
           if [ "$PARENT_PR" = "none" ]; then
-            PARENT_PR="${{ github.event.inputs.allow_prs == true && github.run_id || 'none' }}"
+            PARENT_PR="${{ github.run_id }}"
           fi
           BRANCH="ci/autofix/${{ github.run_id }}-parent-${PARENT_PR}"
 
