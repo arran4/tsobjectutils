@@ -89,6 +89,10 @@ jobs:
           case "${{ github.event_name }}" in
             push)
               run_code_checks=true
+              if [[ "${{ github.ref }}" == refs/heads/main || "${{ github.ref }}" == refs/heads/master ]]; then
+                # In versioning.yaml we auto bump if main was updated. We let run_release trigger version-and-release
+                run_release=true
+              fi
               if [[ "${{ github.ref }}" == refs/tags/* ]]; then
                 run_release=true
               fi
@@ -298,17 +302,19 @@ jobs:
              npm version "$OVERRIDE" --no-git-tag-version
           else
              case "$MODE" in
-               release-major) LEVEL="major" ;;
-               release-minor) LEVEL="minor" ;;
-               release-patch) LEVEL="patch" ;;
-               release-test|release-rc|release-alpha) LEVEL="prerelease" ;;
-               *) LEVEL="" ;;
+               release-major) LEVEL="major"; SUFFIX="" ;;
+               release-minor) LEVEL="minor"; SUFFIX="" ;;
+               release-patch) LEVEL="patch"; SUFFIX="" ;;
+               release-test) LEVEL="prerelease"; SUFFIX="next" ;;
+               release-rc) LEVEL="prerelease"; SUFFIX="rc" ;;
+               release-alpha) LEVEL="prerelease"; SUFFIX="alpha" ;;
+               *) LEVEL=""; SUFFIX="" ;;
              esac
              if [ -n "$LEVEL" ]; then
                 if [ "$LEVEL" == "prerelease" ]; then
-                   npm version prerelease --preid=next --no-git-tag-version
+                   npm version prerelease --preid="$SUFFIX" --no-git-tag-version
                 else
-                   npm version $LEVEL --no-git-tag-version
+                   npm version "$LEVEL" --no-git-tag-version
                 fi
              fi
           fi
