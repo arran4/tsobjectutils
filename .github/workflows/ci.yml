@@ -235,7 +235,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add -A
           git commit -m "ci: automated formatting fixes"
-          git push origin "$BRANCH"
+          git push -f origin "$BRANCH"
 
           gh pr create \
             --title "ci: automated formatting fixes" \
@@ -329,7 +329,11 @@ jobs:
 
             git add package.json package-lock.json
             git commit -m "chore: bump version to $NEW_VERSION"
-            git push origin HEAD:${{ github.ref_name }}
+            if ! git push origin HEAD:${{ github.ref_name }} 2>/dev/null; then
+              echo "Push failed, attempting to rebase..."
+              git pull --rebase origin ${{ github.ref_name }}
+              git push origin HEAD:${{ github.ref_name }}
+            fi
 
             NEW_SHA=$(git rev-parse HEAD)
             echo "manual_bump_occurred=true" >> "$GITHUB_OUTPUT"
