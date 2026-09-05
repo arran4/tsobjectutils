@@ -366,7 +366,7 @@ jobs:
           }
           const nextDev = `${nextPatch(current)}-next`;
           fs.writeFileSync('/tmp/next-dev-version', nextDev);
-NODE
+          NODE
           NEXT_DEV_VERSION=$(cat /tmp/next-dev-version)
           echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -376,12 +376,22 @@ NODE
               echo "Error: publish-tag mode invoked on a non-tag ref." >&2
               exit 1
             fi
+
+            if [[ "${{ github.ref_name }}" != "v${CURRENT_VERSION}" ]]; then
+              echo "Error: Tag ${{ github.ref_name }} does not match package version v${CURRENT_VERSION}." >&2
+              exit 1
+            fi
+
             echo "Running in internal publisher mode; tag is immutable context."
             echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [[ "${{ github.event_name }}" == "push" ]]; then
+             if [[ "${{ github.ref_name }}" != "v${CURRENT_VERSION}" ]]; then
+               echo "Error: Pushed tag ${{ github.ref_name }} does not match package version v${CURRENT_VERSION}." >&2
+               exit 1
+             fi
              echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
              exit 0
           fi
@@ -424,7 +434,11 @@ NODE
             git commit -m "chore: bump version to $CURRENT_VERSION"
 
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-            command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD origin HEAD:${{ github.ref_name }} || true
+            command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD origin HEAD:${{ github.ref_name }} || (
+              echo "Push failed, attempting to rebase..."
+              \git pull --rebase origin ${{ github.ref_name }}
+              $PUSH_CMD origin HEAD:${{ github.ref_name }} || { echo "Branch push failed completely." >&2; exit 1; }
+            )
 
             NEW_SHA=$(git rev-parse HEAD)
 
@@ -536,7 +550,7 @@ NODE
             }
             fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
           }
-NODE
+          NODE
 
       - name: Create next iteration pull request
         if: ${{ needs.release-context.outputs.prepare_next == 'true' }}
