@@ -249,9 +249,14 @@ jobs:
           git add -A
           git commit -m "ci: automated formatting fixes"
 
-          command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD -f origin "$BRANCH"
+          git push -f origin "$BRANCH"
 
-          gh pr create             --title "ci: automated formatting fixes"             --body "Automated formatting pass. Parent-PR: ${PARENT_PR}"             --base main             --head "$BRANCH"             --label "ci-autofix"
+          gh pr create \
+            --title "ci: automated formatting fixes" \
+            --body "Automated formatting pass. Parent-PR: ${PARENT_PR}" \
+            --base main \
+            --head "$BRANCH" \
+            --label "ci-autofix"
 
 
   cleanup-autofix-prs:
@@ -271,7 +276,7 @@ jobs:
           set -euo pipefail
           gh pr list --state open --search "label:ci-autofix in:title" --json number,headRefName,body |             jq -r '.[] | select(.body | contains("Parent-PR: '"$PARENT_PR"'")) | [.number, .headRefName] | @tsv' |             while IFS=$'	' read -r pr branch; do
               gh pr close "$pr" --comment "Closing auto-fix PR because parent PR #$PARENT_PR was closed."
-              command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD origin --delete "$branch" || true
+              git push origin --delete "$branch" || true
             done
 
 
@@ -434,18 +439,39 @@ jobs:
             git commit -m "chore: bump version to $CURRENT_VERSION"
 
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-            command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD origin HEAD:${{ github.ref_name }} || (
-              echo "Push failed, attempting to rebase..."
-              \git pull --rebase origin ${{ github.ref_name }}
-              $PUSH_CMD origin HEAD:${{ github.ref_name }} || { echo "Branch push failed completely." >&2; exit 1; }
-            )
+
+            # Step 1: Capture validated SHA (from github context, the commit this job ran on)
+            VALIDATED_SHA="${GITHUB_SHA}"
+
+            # Step 2: Verify remote branch hasn't moved
+            git fetch origin ${{ github.ref_name }}
+            CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+            if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
+              echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
+              echo "Failing closed to prevent race condition during release." >&2
+              exit 1
+            fi
+
+            # Step 3: Push bump commit as normal fast-forward
+            git push origin HEAD:${{ github.ref_name }} || {
+               echo "Error: Branch push failed completely." >&2
+               exit 1
+            }
 
             NEW_SHA=$(git rev-parse HEAD)
 
+            # Step 4: Verify remote branch SHA is exactly NEW_SHA before tagging
+            VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+            if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
+               echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
+               exit 1
+            fi
+
+            # Step 5: Create/push tag
             git tag "$TAG" "${NEW_SHA}"
-            command -v git >/dev/null 2>&1 && PUSH_CMD="git push" && $PUSH_CMD origin "$TAG" || (
-              VERIFY_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')
-              if [[ "$VERIFY_SHA" == "${NEW_SHA}" ]]; then
+            git push origin "$TAG" || (
+              VERIFY_TAG_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')
+              if [[ "$VERIFY_TAG_SHA" == "${NEW_SHA}" ]]; then
                 echo "Tag successfully verified on remote after push error."
               else
                 echo "Tag push failed and remote verification failed." >&2
