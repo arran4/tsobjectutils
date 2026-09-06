@@ -116,6 +116,10 @@ jobs:
                   run_code_checks=true
                   ;;
                 release-*)
+                  if [[ "${{ github.ref_type }}" != "branch" ]]; then
+                    echo "Error: release-* modes must be executed from a branch context." >&2
+                    exit 1
+                  fi
                   run_code_checks=true
                   run_release=true
                   ;;
