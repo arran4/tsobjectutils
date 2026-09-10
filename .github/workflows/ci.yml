@@ -242,7 +242,7 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" != "refs/heads/main" && "$GITHUB_REF_NAME" != "refs/heads/master" ]]; then
+          if [[ "$GITHUB_REF_NAME" != "refs/heads/main" && "$GITHUB_REF_NAME" != "refs/heads/master" && "$GITHUB_REF_NAME" != "main" && "$GITHUB_REF_NAME" != "master" ]]; then
             echo "Error: Manual release preparation must run on refs/heads/main, got $GITHUB_REF_NAME"
             sh -c "exit 1"
           fi
