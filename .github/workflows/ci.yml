@@ -10,8 +10,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, closed]
     branches: [main, master]
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       mode:
@@ -76,6 +74,9 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" ]]; then
                run_cleanup=true
+               # Closed PRs just clean up
+               run_code_checks=false
+               run_build=false
             fi
           elif [[ "$EVENT_NAME" == "schedule" ]]; then
             if [[ "${{ github.event.schedule }}" == "17 3 1 * *" ]]; then
@@ -209,29 +210,6 @@ jobs:
           branch: automation/lint-fix
           delete-branch: true
 
-  cleanup-autofix-prs:
-    name: Cleanup autofix PRs on parent close
-    needs: [route]
-    if: ${{ needs.route.outputs.run_cleanup == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PARENT_PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          gh pr list --state open --search "label:ci-autofix in:title" --json number,headRefName,body | \
-            jq -r '.[] | select(.body | contains("Parent-PR: '"$PARENT_PR"'")) | [.number, .headRefName] | @tsv' | \
-            while IFS=$'\t' read -r pr branch; do
-              gh pr close "$pr" --comment "Closing auto-fix PR because parent PR #$PARENT_PR was closed."
-              # run push in sh -c
-              sh -c 'git push origin --delete "$branch" || true'
-            done
-
   release-ready:
     name: Release Quality Gates Passed
     needs: [route, node-lint-test, build]
@@ -252,6 +230,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -282,15 +263,25 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+
           if [[ -n "$RELEASE_VERSION_OVERRIDE" ]]; then
              # Normalize optional leading v
              TAG="${RELEASE_VERSION_OVERRIDE#v}"
-             TAG="v${TAG}"
+             TAG="v\${TAG}"
              echo "Using manual version override: $TAG"
              # Validate shape
-             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\$ ]]; then
                 echo "Error: Override $TAG is not a valid release tag shape."
                 sh -c "exit 1"
+             fi
+
+             NEW_VERSION="${TAG#v}"
+
+             if [[ "$NEW_VERSION" == "$CURRENT_VERSION" ]]; then
+                echo "Package is already at overridden version $NEW_VERSION. Proceeding to tag context."
+             else
+                npm version "$NEW_VERSION" --no-git-tag-version
              fi
           else
              echo "Using arran4/git-tag-inc..."
@@ -307,17 +298,25 @@ jobs:
              args=(--print-version-only "$level")
              [[ -n "$suffix" ]] && args+=("$suffix")
              TAG="$(git-tag-inc "${args[@]}")"
+
+             NEW_VERSION="${TAG#v}"
+             npm version "$NEW_VERSION" --no-git-tag-version
           fi
+
           echo "Calculated TAG=$TAG"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          # Sync to package.json to match canonical Node behavior
-          NEW_VERSION="${TAG#v}"
-          npm version "$NEW_VERSION" --no-git-tag-version
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore: bump version to $NEW_VERSION"
+          # Only commit if package version actually changed
+          if git diff --quiet package.json package-lock.json; then
+             echo "Version is already up to date, skipping bump commit."
+             echo "DID_BUMP=false" >> "$GITHUB_ENV"
+          else
+             git config --global user.name "github-actions[bot]"
+             git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+             git add package.json package-lock.json
+             git commit -m "chore: bump version to $NEW_VERSION"
+             echo "DID_BUMP=true" >> "$GITHUB_ENV"
+          fi
 
       - name: Tag and push (Idempotent)
         env:
@@ -326,41 +325,68 @@ jobs:
         run: |
           set -euo pipefail
 
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
+          git remote set-url origin "https://x-access-token:\${GH_TOKEN}@github.com/${{ github.repository }}"
 
-          VALIDATED_SHA="${GITHUB_SHA}"
-
-          git fetch origin ${{ github.ref_name }}
-          CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-          if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
-             echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
-             sh -c "exit 1"
+          # Check remote state for idempotency/retry FIRST
+          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}\$' | awk '{print $1}' || true)
+          PEELED_SHA=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk '{print $1}' || true)
+          if [[ -n "$PEELED_SHA" ]]; then
+              REMOTE_SHA="$PEELED_SHA"
           fi
 
-          git config push.default current
-          sh -c 'git push origin HEAD:${{ github.ref_name }}' || {
-             echo "Error: Branch push failed completely." >&2
-             sh -c "exit 1"
-          }
-
-          NEW_SHA=$(git rev-parse HEAD)
-
-          VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-          if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
-             echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
-             sh -c "exit 1"
-          fi
-
-          git tag -d "$TAG" 2>/dev/null || true
-
-          git tag "$TAG"
-          sh -c 'git push origin "$TAG"' || {
-             REMOTE_SHA=$(git ls-remote --tags origin "$TAG" | awk '{print $1}')
-             if [[ "$REMOTE_SHA" != "$NEW_SHA" ]]; then
-                echo "Race condition: tag pushed remotely with different SHA ($REMOTE_SHA)"
+          if [[ "$DID_BUMP" == "false" ]]; then
+              # Validated SHA is exactly GITHUB_SHA
+              if [[ -n "$REMOTE_SHA" ]]; then
+                 if [[ "$REMOTE_SHA" == "$GITHUB_SHA" ]]; then
+                    echo "Tag $TAG already exists on origin and points to correct SHA ($GITHUB_SHA). Safely retrying publish."
+                 else
+                    echo "Error: Tag $TAG already exists on origin but points to $REMOTE_SHA, not expected $GITHUB_SHA."
+                    sh -c "exit 1"
+                 fi
+              fi
+              NEW_SHA="\${GITHUB_SHA}"
+          else
+             if [[ -n "$REMOTE_SHA" ]]; then
+                echo "Error: Tag $TAG already exists on origin, but we just bumped the version locally. Cannot move tag."
                 sh -c "exit 1"
              fi
-          }
+
+             VALIDATED_SHA="\${GITHUB_SHA}"
+
+             git fetch origin ${{ github.ref_name }}
+             CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+             if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
+                echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
+                sh -c "exit 1"
+             fi
+
+             git config push.default current
+             sh -c 'git push origin HEAD:${{ github.ref_name }}' || {
+                echo "Error: Branch push failed completely." >&2
+                sh -c "exit 1"
+             }
+
+             NEW_SHA=$(git rev-parse HEAD)
+
+             VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+             if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
+                echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
+                sh -c "exit 1"
+             fi
+          fi
+
+          if [[ -z "$REMOTE_SHA" ]]; then
+             git tag -d "$TAG" 2>/dev/null || true
+
+             git tag "$TAG" "$NEW_SHA"
+             sh -c 'git push origin "$TAG"' || {
+                REMOTE_SHA=$(git ls-remote --tags origin "$TAG" | awk '{print $1}')
+                if [[ "$REMOTE_SHA" != "$NEW_SHA" ]]; then
+                   echo "Race condition: tag pushed remotely with different SHA ($REMOTE_SHA)"
+                   sh -c "exit 1"
+                fi
+             }
+          fi
 
       - name: Dispatch Publisher
         env:
@@ -386,6 +412,15 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Verify package version matches tag
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_TAG="v\${CURRENT_VERSION}"
+          if [[ "${{ github.ref_name }}" != "$EXPECTED_TAG" ]]; then
+             echo "Error: Tag ${{ github.ref_name }} does not match package version $EXPECTED_TAG."
+             sh -c "exit 1"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -407,18 +442,18 @@ jobs:
         id: devprep
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          if [[ "${CURRENT_VERSION}" != *-* ]]; then
+          if [[ "\${CURRENT_VERSION}" != *-* ]]; then
             echo "prepare_next=true" >> "$GITHUB_OUTPUT"
-            echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "current_version=\${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
             node <<'NODE'
             const fs = require('fs');
             const current = process.env.CURRENT_VERSION;
             function nextPatch(version) {
               const [major, minor, patchPart] = version.split('.');
               const numericPatch = parseInt(patchPart.split('-')[0], 10);
-              return `${major}.${minor}.${numericPatch + 1}`;
+              return \`\${major}.\${minor}.\${numericPatch + 1}\`;
             }
-            const nextDev = `${nextPatch(current)}-next`;
+            const nextDev = \`\${nextPatch(current)}-next\`;
             fs.writeFileSync('/tmp/next-dev-version', nextDev);
             NODE
             echo "next_dev_version=$(cat /tmp/next-dev-version)" >> "$GITHUB_OUTPUT"
@@ -461,8 +496,8 @@ jobs:
           body: |
             This pull request prepares the repository for the next development cycle.
 
-            * Released version `${{ steps.devprep.outputs.current_version }}`
-            * Bumps the package version to `${{ steps.devprep.outputs.next_dev_version }}` to continue `-next` development.
+            * Released version \`${{ steps.devprep.outputs.current_version }}\`
+            * Bumps the package version to \`${{ steps.devprep.outputs.next_dev_version }}\` to continue \`-next\` development.
           branch: "chore/prepare-${{ steps.devprep.outputs.next_dev_version }}"
           delete-branch: true
           add-paths: |
