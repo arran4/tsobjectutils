@@ -8,7 +8,7 @@ on:
     branches: [main, master]
     tags: ['v*'] # Explicit v* only to avoid test-* pushes triggering release
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, closed]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
   workflow_dispatch:
     inputs:
@@ -49,7 +49,6 @@ jobs:
       run_maintenance: ${{ steps.route.outputs.run_maintenance }}
       is_nightly: ${{ steps.route.outputs.is_nightly }}
       is_monthly: ${{ steps.route.outputs.is_monthly }}
-      run_cleanup: ${{ steps.route.outputs.run_cleanup }}
       mode: ${{ steps.route.outputs.mode }}
     steps:
       - id: route
@@ -68,12 +67,10 @@ jobs:
           run_maintenance=false
           is_nightly=false
           is_monthly=false
-          run_cleanup=false
           mode="build"
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" ]]; then
-               run_cleanup=true
                # Closed PRs just clean up
                run_code_checks=false
                run_build=false
@@ -122,13 +119,12 @@ jobs:
           echo "run_maintenance=$run_maintenance" >> "$GITHUB_OUTPUT"
           echo "is_nightly=$is_nightly" >> "$GITHUB_OUTPUT"
           echo "is_monthly=$is_monthly" >> "$GITHUB_OUTPUT"
-          echo "run_cleanup=$run_cleanup" >> "$GITHUB_OUTPUT"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
   gitleaks:
     name: Secret scan
     needs: [route]
-    if: ${{ needs.route.outputs.run_cleanup != 'true' && (needs.route.outputs.is_nightly == 'true' || needs.route.outputs.is_monthly == 'true') }}
+    if: ${{ needs.route.outputs.is_nightly == 'true' || needs.route.outputs.is_monthly == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -263,15 +259,15 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
 
           if [[ -n "$RELEASE_VERSION_OVERRIDE" ]]; then
              # Normalize optional leading v
              TAG="${RELEASE_VERSION_OVERRIDE#v}"
-             TAG="v\${TAG}"
+             TAG="v${TAG}"
              echo "Using manual version override: $TAG"
              # Validate shape
-             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\$ ]]; then
+             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
                 echo "Error: Override $TAG is not a valid release tag shape."
                 sh -c "exit 1"
              fi
@@ -328,7 +324,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
 
           # Check remote state for idempotency/retry FIRST
-          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}\$' | awk '{print $1}' || true)
+          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}$' | awk '{print $1}' || true)
           PEELED_SHA=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk '{print $1}' || true)
           if [[ -n "$PEELED_SHA" ]]; then
               REMOTE_SHA="$PEELED_SHA"
@@ -414,7 +410,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
           EXPECTED_TAG="v${CURRENT_VERSION}"
           if [[ "${{ github.ref_name }}" != "$EXPECTED_TAG" ]]; then
              echo "Error: Tag ${{ github.ref_name }} does not match package version $EXPECTED_TAG."
@@ -441,7 +437,7 @@ jobs:
       - name: Determine if dev prep needed
         id: devprep
         run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
           if [[ "${CURRENT_VERSION}" != *-* ]]; then
             echo "prepare_next=true" >> "$GITHUB_OUTPUT"
             echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
@@ -451,9 +447,9 @@ jobs:
             function nextPatch(version) {
               const [major, minor, patchPart] = version.split('.');
               const numericPatch = parseInt(patchPart.split('-')[0], 10);
-              return \`\${major}.\${minor}.\${numericPatch + 1}\`;
+              return `${major}.${minor}.${numericPatch + 1}`;
             }
-            const nextDev = \`\${nextPatch(current)}-next\`;
+            const nextDev = `${nextPatch(current)}-next`;
             fs.writeFileSync('/tmp/next-dev-version', nextDev);
             NODE
             echo "next_dev_version=$(cat /tmp/next-dev-version)" >> "$GITHUB_OUTPUT"
