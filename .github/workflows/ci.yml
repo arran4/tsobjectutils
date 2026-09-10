@@ -237,8 +237,6 @@ jobs:
         with:
           mode: install
       - name: Verify Exact Origin/Main
-        env:
-          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/main" && "$GITHUB_REF" != "refs/heads/master" ]]; then
