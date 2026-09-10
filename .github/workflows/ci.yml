@@ -325,7 +325,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          git remote set-url origin "https://x-access-token:\${GH_TOKEN}@github.com/${{ github.repository }}"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
 
           # Check remote state for idempotency/retry FIRST
           REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}\$' | awk '{print $1}' || true)
@@ -344,14 +344,14 @@ jobs:
                     sh -c "exit 1"
                  fi
               fi
-              NEW_SHA="\${GITHUB_SHA}"
+              NEW_SHA="${GITHUB_SHA}"
           else
              if [[ -n "$REMOTE_SHA" ]]; then
                 echo "Error: Tag $TAG already exists on origin, but we just bumped the version locally. Cannot move tag."
                 sh -c "exit 1"
              fi
 
-             VALIDATED_SHA="\${GITHUB_SHA}"
+             VALIDATED_SHA="${GITHUB_SHA}"
 
              git fetch origin ${{ github.ref_name }}
              CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
@@ -415,7 +415,7 @@ jobs:
       - name: Verify package version matches tag
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED_TAG="v\${CURRENT_VERSION}"
+          EXPECTED_TAG="v${CURRENT_VERSION}"
           if [[ "${{ github.ref_name }}" != "$EXPECTED_TAG" ]]; then
              echo "Error: Tag ${{ github.ref_name }} does not match package version $EXPECTED_TAG."
              sh -c "exit 1"
@@ -442,9 +442,9 @@ jobs:
         id: devprep
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          if [[ "\${CURRENT_VERSION}" != *-* ]]; then
+          if [[ "${CURRENT_VERSION}" != *-* ]]; then
             echo "prepare_next=true" >> "$GITHUB_OUTPUT"
-            echo "current_version=\${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
             node <<'NODE'
             const fs = require('fs');
             const current = process.env.CURRENT_VERSION;
