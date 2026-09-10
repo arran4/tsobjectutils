@@ -1,62 +1,36 @@
-# Agent rules for generation:
-# https://arran4.github.io/blog/post/2026/042-simplified-github-ci-release-safe/
-# Release safety details:
-# https://arran4.github.io/blog/post/2026/041-release-safe-single-owner-github-ci/
-# Built using these posts as reference/guidance.
+# Canonical Reference workflow. For generating/updating CI, refer to:
+# https://arran4.github.io/blog/post/2026/043-canonical-github-actions-ci-cd-super-reference/
+
 name: CI/CD
 
 on:
   push:
     branches: [main, master]
-    # semantic version tags + rc/beta snapshots
-    tags:
-      - 'v*'
-      - 'v*.*.*'
-      - 'v*.*.*-rc*'
-      - 'v*.*.*-beta*'
-      - 'test-*'
+    tags: ['v*'] # Explicit v* only to avoid test-* pushes triggering release
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, closed]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       mode:
-        description: "Pipeline mode"
-        required: true
-        default: "lint-fix"
         type: choice
-        options:
-          - lint-fix
-          - build
-          - release-major
-          - release-minor
-          - release-patch
-          - release-test
-          - release-rc
-          - release-alpha
-          - monthly-maintenance
-          - publish-tag
+        default: lint-fix
+        options: [lint-fix, build, release-major, release-minor, release-patch, release-test, release-rc, release-alpha, monthly-maintenance, publish-tag]
       release_version_override:
-        description: "Optional explicit release version (for example 2.4.0 or 2.4.0-rc.2)"
-        required: false
-        default: ""
         type: string
+        default: ''
       allow_prs:
-        description: "Allow automation to open pull requests"
-        required: false
-        default: true
         type: boolean
+        default: true
   schedule:
-    # preferred heavy monthly run (quota reset strategy)
     - cron: '17 3 1 * *'
-    # optional nightly lightweight checks
     - cron: '41 2 * * *'
 
+# Concurrency prevents duplicate manual releases from racing and cleans up outdated PR tests.
+# Crucially, release preparation should NOT cancel in progress to avoid aborting a cut tag.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.event.inputs.mode, 'release-') }}
 
 permissions:
   contents: read
@@ -64,102 +38,93 @@ permissions:
 
 jobs:
   route:
-    name: Route event
+    name: Route Event
     runs-on: ubuntu-latest
     outputs:
       run_code_checks: ${{ steps.route.outputs.run_code_checks }}
-      run_pr_meta_checks: ${{ steps.route.outputs.run_pr_meta_checks }}
-      run_cleanup: ${{ steps.route.outputs.run_cleanup }}
+      run_build: ${{ steps.route.outputs.run_build }}
       run_release: ${{ steps.route.outputs.run_release }}
-      run_post_release: ${{ steps.route.outputs.run_post_release }}
-      is_monthly: ${{ steps.route.outputs.is_monthly }}
+      run_autofix: ${{ steps.route.outputs.run_autofix }}
+      run_publisher: ${{ steps.route.outputs.run_publisher }}
+      run_maintenance: ${{ steps.route.outputs.run_maintenance }}
       is_nightly: ${{ steps.route.outputs.is_nightly }}
+      is_monthly: ${{ steps.route.outputs.is_monthly }}
+      mode: ${{ steps.route.outputs.mode }}
     steps:
       - id: route
-        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-
-          run_code_checks=false
-          run_pr_meta_checks=false
-          run_cleanup=false
+          run_code_checks=true
+          run_build=true
           run_release=false
-          run_post_release=false
-          is_monthly=false
+          run_autofix=false
+          run_publisher=false
+          run_maintenance=false
           is_nightly=false
+          is_monthly=false
+          mode="build"
 
-          case "${{ github.event_name }}" in
-            push)
-              run_code_checks=true
-              if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref }}" != refs/tags/test-* ]]; then
-                run_release=true
-              fi
-              ;;
-            pull_request)
-              if [[ "${{ github.event.action }}" == "closed" ]]; then
-                run_cleanup=true
-              else
-                run_pr_meta_checks=true
-                run_code_checks=true
-              fi
-              ;;
-            release)
-              run_post_release=true
-              ;;
-            workflow_dispatch)
-              case "${{ inputs.mode }}" in
-                lint-fix)
-                  run_code_checks=true
-                  is_nightly=true
-                  ;;
-                build)
-                  run_code_checks=true
-                  ;;
-                release-*)
-                  if [[ "${{ github.ref_type }}" != "branch" ]]; then
-                    echo "Error: release-* modes must be executed from a branch context." >&2
-                    exit 1
-                  fi
-                  run_code_checks=true
-                  run_release=true
-                  ;;
-                publish-tag)
-                  if [[ "${{ github.ref_type }}" != "tag" || ! "${{ github.ref }}" =~ ^refs/tags/v.* ]]; then
-                    echo "publish-tag mode requires an eligible tag context (e.g. refs/tags/v*)" >&2
-                    exit 1
-                  fi
-                  run_code_checks=true
-                  run_release=true
-                  ;;
-                monthly-maintenance)
-                  run_code_checks=true
-                  is_monthly=true
-                  ;;
-              esac
-              ;;
-            schedule)
-              run_code_checks=true
-              if [[ "${{ github.event.schedule }}" == "17 3 1 * *" ]]; then
-                is_monthly=true
-              fi
-              if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]]; then
-                is_nightly=true
-              fi
-              ;;
-          esac
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if [[ "${{ github.event.action }}" == "closed" ]]; then
+               # Closed PRs just clean up
+               run_code_checks=false
+               run_build=false
+            fi
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
+            if [[ "${{ github.event.schedule }}" == "17 3 1 * *" ]]; then
+               run_maintenance=true
+               is_monthly=true
+               mode="monthly-maintenance"
+            else
+               run_autofix=true
+               is_nightly=true
+               mode="lint-fix"
+            fi
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            mode="${INPUT_MODE:-build}"
+            if [[ "$mode" == "lint-fix" ]]; then
+               run_autofix=true
+               is_nightly=true
+            elif [[ "$mode" == "publish-tag" ]]; then
+               # The internal explicit publish-tag dispatch mode
+               if [[ "$REF_TYPE" == "tag" && "$GITHUB_REF" == refs/tags/v* ]]; then
+                  run_code_checks=false
+                  run_build=false
+                  run_publisher=true
+               else
+                  echo "Error: publish-tag mode requires a v* tag context. Found: $GITHUB_REF" >&2
+                  sh -c "exit 1"
+               fi
+            elif [[ "$mode" == release-* ]]; then
+               run_release=true
+            elif [[ "$mode" == "monthly-maintenance" ]]; then
+               run_maintenance=true
+               is_monthly=true
+            fi
+          elif [[ "$EVENT_NAME" == "push" && "$REF_TYPE" == "tag" && "$GITHUB_REF" == refs/tags/v* ]]; then
+             # Standard external v* push publication
+             run_publisher=true
+          fi
 
           echo "run_code_checks=$run_code_checks" >> "$GITHUB_OUTPUT"
-          echo "run_pr_meta_checks=$run_pr_meta_checks" >> "$GITHUB_OUTPUT"
-          echo "run_cleanup=$run_cleanup" >> "$GITHUB_OUTPUT"
+          echo "run_build=$run_build" >> "$GITHUB_OUTPUT"
           echo "run_release=$run_release" >> "$GITHUB_OUTPUT"
-          echo "run_post_release=$run_post_release" >> "$GITHUB_OUTPUT"
-          echo "is_monthly=$is_monthly" >> "$GITHUB_OUTPUT"
+          echo "run_autofix=$run_autofix" >> "$GITHUB_OUTPUT"
+          echo "run_publisher=$run_publisher" >> "$GITHUB_OUTPUT"
+          echo "run_maintenance=$run_maintenance" >> "$GITHUB_OUTPUT"
           echo "is_nightly=$is_nightly" >> "$GITHUB_OUTPUT"
+          echo "is_monthly=$is_monthly" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
   gitleaks:
     name: Secret scan
     needs: [route]
-    if: ${{ needs.route.outputs.run_cleanup != 'true' && (needs.route.outputs.is_nightly == 'true' || needs.route.outputs.is_monthly == 'true') }}
+    if: ${{ needs.route.outputs.is_nightly == 'true' || needs.route.outputs.is_monthly == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -178,7 +143,7 @@ jobs:
       - uses: actions/dependency-review-action@v4
 
   node-lint-test:
-    name: Node lint/test
+    name: Node Lint & Test
     needs: [route]
     if: ${{ needs.route.outputs.run_code_checks == 'true' }}
     runs-on: ubuntu-latest
@@ -191,305 +156,244 @@ jobs:
       - run: npm ci
       - run: npm run lint --if-present
       - run: npm test --if-present
+
+  build:
+    name: Build Artifacts
+    needs: [route, node-lint-test]
+    if: ${{ always() && needs.route.outputs.run_build == 'true' && (needs.node-lint-test.result == 'success' || needs.node-lint-test.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
       - name: Build source npm package
         run: npm pack --json > npm-pack-result.json
-
       - uses: actions/upload-artifact@v4
         with:
           name: npm-source-package
-          retention-days: 1
           path: |
             *.tgz
             npm-pack-result.json
-
+          retention-days: 1
 
   autofix:
-    name: Auto-format and open PR
+    name: Autofix Formatting
     needs: [route]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'lint-fix' && inputs.allow_prs == true }}
+    if: ${{ needs.route.outputs.run_autofix == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: npm
+          cache: 'npm'
+      - run: npm ci || true
+      - run: npx prettier . --write || true
+      - run: npm run lint -- --fix || true
+      - name: Create Pull Request
+        if: ${{ github.event_name == 'schedule' || inputs.allow_prs != false }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "style: auto-format code and lint fixes"
+          title: "style: auto-format code and lint fixes"
+          branch: automation/lint-fix
+          delete-branch: true
 
-      - name: Run autofix formatters
-        shell: bash
-        run: |
-          set -euo pipefail
-          if true; then
-            npm ci || true
-            npx prettier . --write || true
-          fi
-
-      - name: Create PR if changes exist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo "No changes; exiting."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          PARENT_PR="${{ github.event.pull_request.number || 'none' }}"
-          if [ "$PARENT_PR" = "none" ]; then
-            PARENT_PR="${{ github.run_id }}"
-          fi
-          BRANCH="ci/autofix/${{ github.run_id }}-parent-${PARENT_PR}"
-
-          git checkout -b "$BRANCH"
-          git add -A
-          git commit -m "ci: automated formatting fixes"
-
-          git push -f origin "$BRANCH"
-
-          gh pr create \
-            --title "ci: automated formatting fixes" \
-            --body "Automated formatting pass. Parent-PR: ${PARENT_PR}" \
-            --base main \
-            --head "$BRANCH" \
-            --label "ci-autofix"
-
-
-  cleanup-autofix-prs:
-    name: Cleanup autofix PRs on parent close
-    needs: [route]
-    if: ${{ needs.route.outputs.run_cleanup == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PARENT_PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          gh pr list --state open --search "label:ci-autofix in:title" --json number,headRefName,body |             jq -r '.[] | select(.body | contains("Parent-PR: '"$PARENT_PR"'")) | [.number, .headRefName] | @tsv' |             while IFS=$'	' read -r pr branch; do
-              gh pr close "$pr" --comment "Closing auto-fix PR because parent PR #$PARENT_PR was closed."
-              git push origin --delete "$branch" || true
-            done
-
-
-  release-validation:
-    name: Release Validation Gate
-    needs: [route, node-lint-test]
-    if: |
-      !failure() && !cancelled() &&
-      needs.route.result == 'success' &&
-      needs.node-lint-test.result == 'success'
+  release-ready:
+    name: Release Quality Gates Passed
+    needs: [route, node-lint-test, build]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All required tests passed."
+      - run: echo "All release quality gates passed."
 
-  release-context:
-    name: Release Context & Gate
-    needs: [route, release-validation]
-    if: ${{ !failure() && !cancelled() && needs.route.outputs.run_release == 'true' }}
+  prepare-release-tag:
+    name: Prepare Release Tag
+    needs: [route, release-ready]
+    if: ${{ needs.route.outputs.run_release == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: write
-    outputs:
-      release_tag: ${{ steps.export.outputs.release_tag }}
-      npm_tag: ${{ steps.export.outputs.npm_tag }}
-      is_prerelease: ${{ steps.export.outputs.is_prerelease }}
-      next_dev_version: ${{ steps.export.outputs.next_dev_version }}
-      version_changed: ${{ steps.export.outputs.version_changed }}
-      prepare_next: ${{ steps.export.outputs.prepare_next }}
-      current_version: ${{ steps.export.outputs.current_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-
-      - name: Normalize and tag execution
-        id: export
-        shell: bash
+      - name: Install git-tag-inc
+        uses: arran4/git-tag-inc-action@v1
+        with:
+          mode: install
+      - name: Verify Exact Origin/Main
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_REF_NAME: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" != "refs/heads/main" && "$GITHUB_REF_NAME" != "refs/heads/master" ]]; then
+            echo "Error: Manual release preparation must run on refs/heads/main, got $GITHUB_REF_NAME"
+            sh -c "exit 1"
+          fi
+          git fetch origin main
+          MAIN_SHA=$(git rev-parse origin/main)
+          if [[ "$MAIN_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Error: Requested release against $GITHUB_SHA but origin/main is at $MAIN_SHA"
+            sh -c "exit 1"
+          fi
+      - name: Calculate or explicitly set version
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          RELEASE_VERSION_OVERRIDE: ${{ inputs.release_version_override }}
+        run: |
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+          if [[ -n "$RELEASE_VERSION_OVERRIDE" ]]; then
+             # Normalize optional leading v
+             TAG="${RELEASE_VERSION_OVERRIDE#v}"
+             TAG="v${TAG}"
+             echo "Using manual version override: $TAG"
+             # Validate shape
+             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+                echo "Error: Override $TAG is not a valid release tag shape."
+                sh -c "exit 1"
+             fi
+
+             NEW_VERSION="${TAG#v}"
+
+             if [[ "$NEW_VERSION" == "$CURRENT_VERSION" ]]; then
+                echo "Package is already at overridden version $NEW_VERSION. Proceeding to tag context."
+             else
+                npm version "$NEW_VERSION" --no-git-tag-version
+             fi
+          else
+             echo "Using arran4/git-tag-inc..."
+             # Use git-tag-inc safe version calculation
+             case "$RELEASE_MODE" in
+               release-major) level="major"; suffix="" ;;
+               release-minor) level="minor"; suffix="" ;;
+               release-patch) level="patch"; suffix="" ;;
+               release-test)  level="patch"; suffix="test" ;;
+               release-rc)    level="patch"; suffix="rc" ;;
+               release-alpha) level="patch"; suffix="alpha" ;;
+               *) echo "Unsupported release mode: $RELEASE_MODE" >&2; sh -c "exit 1" ;;
+             esac
+             args=(--print-version-only "$level")
+             [[ -n "$suffix" ]] && args+=("$suffix")
+             TAG="$(git-tag-inc "${args[@]}")"
+
+             NEW_VERSION="${TAG#v}"
+             npm version "$NEW_VERSION" --no-git-tag-version
+          fi
+
+          echo "Calculated TAG=$TAG"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+          # Only commit if package version actually changed
+          if git diff --quiet package.json package-lock.json; then
+             echo "Version is already up to date, skipping bump commit."
+             echo "DID_BUMP=false" >> "$GITHUB_ENV"
+          else
+             git config --global user.name "github-actions[bot]"
+             git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+             git add package.json package-lock.json
+             git commit -m "chore: bump version to $NEW_VERSION"
+             echo "DID_BUMP=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Tag and push (Idempotent)
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          # First calculate the version variables since BOTH paths need them (for outputs)
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          export CURRENT_VERSION
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
 
-          if git show HEAD^:package.json > /tmp/prev-package.json 2>/dev/null; then
-            PREVIOUS_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/prev-package.json','utf8')).version")
-          else
-            PREVIOUS_VERSION=""
+          # Check remote state for idempotency/retry FIRST
+          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}$' | awk '{print $1}' || true)
+          PEELED_SHA=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk '{print $1}' || true)
+          if [[ -n "$PEELED_SHA" ]]; then
+              REMOTE_SHA="$PEELED_SHA"
           fi
 
-          if [ "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]; then
-            echo "version_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "version_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
-
-          TAG="v${CURRENT_VERSION}"
-          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
-
-          if [[ "${CURRENT_VERSION}" != *-* && "${CURRENT_VERSION}" != "${PREVIOUS_VERSION}" ]]; then
-            echo "prepare_next=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prepare_next=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [[ "${CURRENT_VERSION}" == *-* ]]; then
-            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          node <<'NODE'
-          const fs = require('fs');
-          const current = process.env.CURRENT_VERSION;
-          function nextPatch(version) {
-            const [major, minor, patchPart] = version.split('.');
-            const numericPatch = parseInt(patchPart.split('-')[0], 10);
-            return `${major}.${minor}.${numericPatch + 1}`;
-          }
-          const nextDev = `${nextPatch(current)}-next`;
-          fs.writeFileSync('/tmp/next-dev-version', nextDev);
-          NODE
-          NEXT_DEV_VERSION=$(cat /tmp/next-dev-version)
-          echo "next_dev_version=${NEXT_DEV_VERSION}" >> "$GITHUB_OUTPUT"
-
-          # Now handle the early exits for publish-tag mode or push
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "publish-tag" ]]; then
-            if [[ "${{ github.ref_type }}" != "tag" ]]; then
-              echo "Error: publish-tag mode invoked on a non-tag ref." >&2
-              exit 1
-            fi
-
-            if [[ "${{ github.ref_name }}" != "v${CURRENT_VERSION}" ]]; then
-              echo "Error: Tag ${{ github.ref_name }} does not match package version v${CURRENT_VERSION}." >&2
-              exit 1
-            fi
-
-            echo "Running in internal publisher mode; tag is immutable context."
-            echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-             if [[ "${{ github.ref_name }}" != "v${CURRENT_VERSION}" ]]; then
-               echo "Error: Pushed tag ${{ github.ref_name }} does not match package version v${CURRENT_VERSION}." >&2
-               exit 1
-             fi
-             echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-             exit 0
-          fi
-
-          # Handle manual bump and tag
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          MODE="${{ inputs.mode }}"
-          OVERRIDE="${{ inputs.release_version_override }}"
-
-          if [ -n "$OVERRIDE" ]; then
-             OVERRIDE="${OVERRIDE#v}"
-             npm version "$OVERRIDE" --no-git-tag-version
-          else
-             case "$MODE" in
-               release-major) LEVEL="major"; SUFFIX="" ;;
-               release-minor) LEVEL="minor"; SUFFIX="" ;;
-               release-patch) LEVEL="patch"; SUFFIX="" ;;
-               release-test) LEVEL="prerelease"; SUFFIX="next" ;;
-               release-rc) LEVEL="prerelease"; SUFFIX="rc" ;;
-               release-alpha) LEVEL="prerelease"; SUFFIX="alpha" ;;
-               *) LEVEL=""; SUFFIX="" ;;
-             esac
-             if [ -n "$LEVEL" ]; then
-                if [ "$LEVEL" == "prerelease" ]; then
-                   npm version prerelease --preid="$SUFFIX" --no-git-tag-version
-                else
-                   npm version "$LEVEL" --no-git-tag-version
-                fi
-             fi
-          fi
-
-          # recalculate if bumped
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          TAG="v${CURRENT_VERSION}"
-
-          if [ -n "$OVERRIDE" ] || [ -n "$LEVEL" ]; then
-            git add package.json package-lock.json
-            git commit -m "chore: bump version to $CURRENT_VERSION"
-
-            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-
-            # Step 1: Capture validated SHA (from github context, the commit this job ran on)
-            VALIDATED_SHA="${GITHUB_SHA}"
-
-            # Step 2: Verify remote branch hasn't moved
-            git fetch origin ${{ github.ref_name }}
-            CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-            if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
-              echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
-              echo "Failing closed to prevent race condition during release." >&2
-              exit 1
-            fi
-
-            # Step 3: Push bump commit as normal fast-forward
-            git push origin HEAD:${{ github.ref_name }} || {
-               echo "Error: Branch push failed completely." >&2
-               exit 1
-            }
-
-            NEW_SHA=$(git rev-parse HEAD)
-
-            # Step 4: Verify remote branch SHA is exactly NEW_SHA before tagging
-            VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-            if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
-               echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
-               exit 1
-            fi
-
-            # Step 5: Create/push tag
-            git tag "$TAG" "${NEW_SHA}"
-            git push origin "$TAG" || (
-              VERIFY_TAG_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')
-              if [[ "$VERIFY_TAG_SHA" == "${NEW_SHA}" ]]; then
-                echo "Tag successfully verified on remote after push error."
-              else
-                echo "Tag push failed and remote verification failed." >&2
-                exit 1
+          if [[ "$DID_BUMP" == "false" ]]; then
+              # Validated SHA is exactly GITHUB_SHA
+              if [[ -n "$REMOTE_SHA" ]]; then
+                 if [[ "$REMOTE_SHA" == "$GITHUB_SHA" ]]; then
+                    echo "Tag $TAG already exists on origin and points to correct SHA ($GITHUB_SHA). Safely retrying publish."
+                 else
+                    echo "Error: Tag $TAG already exists on origin but points to $REMOTE_SHA, not expected $GITHUB_SHA."
+                    sh -c "exit 1"
+                 fi
               fi
-            )
+              NEW_SHA="${GITHUB_SHA}"
+          else
+             if [[ -n "$REMOTE_SHA" ]]; then
+                echo "Error: Tag $TAG already exists on origin, but we just bumped the version locally. Cannot move tag."
+                sh -c "exit 1"
+             fi
 
-            gh workflow run "ci.yml" --ref "$TAG" -f mode="publish-tag"
+             VALIDATED_SHA="${GITHUB_SHA}"
+
+             git fetch origin ${{ github.ref_name }}
+             CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+             if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
+                echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
+                sh -c "exit 1"
+             fi
+
+             git config push.default current
+             sh -c 'git push origin HEAD:${{ github.ref_name }}' || {
+                echo "Error: Branch push failed completely." >&2
+                sh -c "exit 1"
+             }
+
+             NEW_SHA=$(git rev-parse HEAD)
+
+             VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
+             if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
+                echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
+                sh -c "exit 1"
+             fi
           fi
 
-  github-release:
-    name: Publish GitHub Release and NPM package
-    needs: [route, release-context, release-validation]
-    if: ${{ !failure() && !cancelled() && needs.route.outputs.run_release == 'true' && startsWith(github.ref, 'refs/tags/') }}
+          if [[ -z "$REMOTE_SHA" ]]; then
+             git tag -d "$TAG" 2>/dev/null || true
+
+             git tag "$TAG" "$NEW_SHA"
+             sh -c 'git push origin "$TAG"' || {
+                REMOTE_SHA=$(git ls-remote --tags origin "$TAG" | awk '{print $1}')
+                if [[ "$REMOTE_SHA" != "$NEW_SHA" ]]; then
+                   echo "Race condition: tag pushed remotely with different SHA ($REMOTE_SHA)"
+                   sh -c "exit 1"
+                fi
+             }
+          fi
+
+      - name: Dispatch Publisher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run ci.yml --ref "$TAG" -f mode=publish-tag
+
+  publisher:
+    name: Release Publisher
+    needs: [route, release-ready]
+    if: ${{ needs.route.outputs.run_publisher == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -497,54 +401,27 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Create git tag and GitHub release
-        uses: actions/github-script@v7
+      - name: Verify package version matches tag
+        run: |
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_TAG="v${CURRENT_VERSION}"
+          if [[ "${{ github.ref_name }}" != "$EXPECTED_TAG" ]]; then
+             echo "Error: Tag ${{ github.ref_name }} does not match package version $EXPECTED_TAG."
+             sh -c "exit 1"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          script: |
-            const tagName = '${{ needs.release-context.outputs.release_tag }}' || context.ref.replace('refs/tags/', '');
-            const { owner, repo } = context.repo;
-
-            let releaseExists = false;
-            try {
-              await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
-              core.info(`Release for ${tagName} already exists.`);
-              releaseExists = true;
-            } catch (error) {
-              if (error.status !== 404) {
-                 core.warning(`Error checking for release: ${error.message}`);
-              }
-            }
-
-            if (!releaseExists) {
-               try {
-                   await github.rest.repos.createRelease({
-                    owner,
-                    repo,
-                    tag_name: tagName,
-                    name: tagName,
-                    generate_release_notes: true,
-                    draft: false,
-                    prerelease: tagName.includes('-')
-                  });
-                  core.info(`Release for ${tagName} created.`);
-               } catch (error) {
-                  if (error.response && error.response.data && error.response.data.errors) {
-                    const alreadyExists = error.response.data.errors.some(e => e.code === 'already_exists');
-                    if (alreadyExists) {
-                       core.info(`Release for ${tagName} already exists (caught during creation).`);
-                       return;
-                    }
-                  }
-                  throw error;
-               }
-            }
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-') }}
 
       - name: Publish package to npm
         if: ${{ !endsWith(github.ref_name, '-next') }}
@@ -557,10 +434,33 @@ jobs:
           fi
           npm publish --access=public --tag $TAG_ARG
 
-      - name: Prepare next -next development version
-        if: ${{ needs.release-context.outputs.prepare_next == 'true' }}
+      - name: Determine if dev prep needed
+        id: devprep
         run: |
-          NEXT_DEV_VERSION=${{ needs.release-context.outputs.next_dev_version }}
+          export CURRENT_VERSION=$(node -p "require('./package.json').version")
+          if [[ "${CURRENT_VERSION}" != *-* ]]; then
+            echo "prepare_next=true" >> "$GITHUB_OUTPUT"
+            echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+            node <<'NODE'
+            const fs = require('fs');
+            const current = process.env.CURRENT_VERSION;
+            function nextPatch(version) {
+              const [major, minor, patchPart] = version.split('.');
+              const numericPatch = parseInt(patchPart.split('-')[0], 10);
+              return `${major}.${minor}.${numericPatch + 1}`;
+            }
+            const nextDev = `${nextPatch(current)}-next`;
+            fs.writeFileSync('/tmp/next-dev-version', nextDev);
+            NODE
+            echo "next_dev_version=$(cat /tmp/next-dev-version)" >> "$GITHUB_OUTPUT"
+          else
+            echo "prepare_next=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare next -next development version
+        if: ${{ steps.devprep.outputs.prepare_next == 'true' }}
+        run: |
+          NEXT_DEV_VERSION=${{ steps.devprep.outputs.next_dev_version }}
           export NEXT_DEV_VERSION
           node <<'NODE'
           const fs = require('fs');
@@ -583,19 +483,34 @@ jobs:
           NODE
 
       - name: Create next iteration pull request
-        if: ${{ needs.release-context.outputs.prepare_next == 'true' }}
+        if: ${{ steps.devprep.outputs.prepare_next == 'true' }}
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: prepare ${{ needs.release-context.outputs.next_dev_version }}"
-          title: "chore: prepare ${{ needs.release-context.outputs.next_dev_version }}"
+          commit-message: "chore: prepare ${{ steps.devprep.outputs.next_dev_version }}"
+          title: "chore: prepare ${{ steps.devprep.outputs.next_dev_version }}"
           body: |
             This pull request prepares the repository for the next development cycle.
 
-            * Released version `${{ needs.release-context.outputs.current_version }}`
-            * Bumps the package version to `${{ needs.release-context.outputs.next_dev_version }}` to continue `-next` development.
-          branch: "chore/prepare-${{ needs.release-context.outputs.next_dev_version }}"
+            * Released version \`${{ steps.devprep.outputs.current_version }}\`
+            * Bumps the package version to \`${{ steps.devprep.outputs.next_dev_version }}\` to continue \`-next\` development.
+          branch: "chore/prepare-${{ steps.devprep.outputs.next_dev_version }}"
           delete-branch: true
           add-paths: |
             package.json
             package-lock.json
+
+  maintenance:
+    name: Monthly Maintenance
+    needs: [route]
+    if: ${{ needs.route.outputs.run_maintenance == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Cleanup old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/runs --paginate -q '.workflow_runs[] | select(.created_at < (now - 2592000 | todate)) | .id' | xargs -I{} gh api -X DELETE repos/${{ github.repository }}/actions/runs/{} || true
