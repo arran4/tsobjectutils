@@ -237,19 +237,17 @@ jobs:
         with:
           mode: install
       - name: Verify Exact Origin/Main
-        env:
-          GITHUB_REF_NAME: ${{ github.ref }}
-          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" != "refs/heads/main" && "$GITHUB_REF_NAME" != "refs/heads/master" ]]; then
-            echo "Error: Manual release preparation must run on refs/heads/main, got $GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" != "refs/heads/main" && "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "Error: Manual release preparation must run on refs/heads/main or refs/heads/master, got $GITHUB_REF"
             sh -c "exit 1"
           fi
-          git fetch origin main
-          MAIN_SHA=$(git rev-parse origin/main)
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          git fetch origin "$BRANCH_NAME"
+          MAIN_SHA=$(git rev-parse "origin/$BRANCH_NAME")
           if [[ "$MAIN_SHA" != "$GITHUB_SHA" ]]; then
-            echo "Error: Requested release against $GITHUB_SHA but origin/main is at $MAIN_SHA"
+            echo "Error: Requested release against $GITHUB_SHA but origin/$BRANCH_NAME is at $MAIN_SHA"
             sh -c "exit 1"
           fi
       - name: Calculate or explicitly set version
