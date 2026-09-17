@@ -12,10 +12,10 @@ This library provides a set of helper functions that allow you to safely extract
 
 By using the helper functions provided by this library, you gain the following benefits:
 
-* **Type safety:** The helper functions ensure that the values you extract from untyped objects have the correct type.
-* **Null safety:** The helper functions handle null and undefined values gracefully, preventing runtime errors.
-* **Code clarity:** The helper functions make your code more readable and easier to understand.
-* **Reduced boilerplate:** The helper functions reduce the amount of boilerplate code you need to write.
+- **Type safety:** The helper functions ensure that the values you extract from untyped objects have the correct type.
+- **Null safety:** The helper functions handle null and undefined values gracefully, preventing runtime errors.
+- **Code clarity:** The helper functions make your code more readable and easier to understand.
+- **Reduced boilerplate:** The helper functions reduce the amount of boilerplate code you need to write.
 
 ## Installation
 
@@ -33,26 +33,29 @@ import {
   GetDatePropOrDefault,
   GetBooleanPropOrDefault,
   GetObjectPropOrThrow,
-  GetStringArrayPropOrDefault
-} from "@arran4/tsobjectutils";
+  GetStringArrayPropOrDefault,
+} from '@arran4/tsobjectutils';
 
 class UserSettings {
   constructor(
     props: Partial<Record<keyof UserSettings, unknown>> | null = null,
-    public Theme: string = GetStringPropOrDefault(props, "Theme", "light")
+    public Theme: string = GetStringPropOrDefault(props, 'Theme', 'light')
   ) {}
 }
 
 export class User {
   constructor(
     props: Partial<Record<keyof User, unknown>> | null = null,
-    public UserUID: string = GetStringPropOrDefault(props, "UserUID", ""),
-    public Email: string = GetStringPropOrDefault(props, "Email", ""),
-    public Name: string = GetStringPropOrDefault(props, "Name", ""),
-    public Settings: UserSettings = GetObjectPropOrThrow<UserSettings>(props, "Settings"),
-    public Tags: string[] = GetStringArrayPropOrDefault(props, "Tags", []),
-    public Created: Date | null = GetDatePropOrDefault(props, "Created", null),
-    public Active: boolean = GetBooleanPropOrDefault(props, "Active", false)
+    public UserUID: string = GetStringPropOrDefault(props, 'UserUID', ''),
+    public Email: string = GetStringPropOrDefault(props, 'Email', ''),
+    public Name: string = GetStringPropOrDefault(props, 'Name', ''),
+    public Settings: UserSettings = GetObjectPropOrThrow<UserSettings>(
+      props,
+      'Settings'
+    ),
+    public Tags: string[] = GetStringArrayPropOrDefault(props, 'Tags', []),
+    public Created: Date | null = GetDatePropOrDefault(props, 'Created', null),
+    public Active: boolean = GetBooleanPropOrDefault(props, 'Active', false)
   ) {}
 }
 ```
@@ -60,16 +63,16 @@ export class User {
 Common helpers can also be used independently:
 
 ```typescript
-const lastLogin = GetDatePropOrDefault(rawUser, "LastLogin", new Date());
-const settings = GetObjectPropOrThrow<UserSettings>(rawUser, "Settings");
-const roles = GetStringArrayPropOrDefault(rawUser, "Roles", []);
-const isAdmin = GetBooleanPropOrDefault(rawUser, "IsAdmin", false);
+const lastLogin = GetDatePropOrDefault(rawUser, 'LastLogin', new Date());
+const settings = GetObjectPropOrThrow<UserSettings>(rawUser, 'Settings');
+const roles = GetStringArrayPropOrDefault(rawUser, 'Roles', []);
+const isAdmin = GetBooleanPropOrDefault(rawUser, 'IsAdmin', false);
 ```
 
 By relying on these helpers you gain:
 
-* a single constructor argument for easy copying of an object
-* safer unmarshalling of deserialized JSON objects
+- a single constructor argument for easy copying of an object
+- safer unmarshalling of deserialized JSON objects
 
 ## API summary
 
@@ -108,47 +111,217 @@ Use `npm test` to run the Jest suite and verify the utilities.
 <!-- grep 'export' src/index.ts | sed 's/ *{$/;/' | sort -->
 
 ```typescript
-export function GetBigIntPropOrDefault<R extends bigint | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): R;
-export function GetBigIntPropOrDefaultFunction<R extends bigint | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R;
-export function GetBigIntPropOrThrow<R extends bigint | null>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): R;
-export function GetBooleanFunctionPropOrDefault(props:Record<string, unknown> | undefined | null, prop:string, constructorFunc: (v: unknown) => boolean, defaultValue:boolean):boolean;
-export function GetBooleanFunctionPropOrDefaultFunction(props:Record<string, unknown> | undefined | null, prop:string, constructorFunc: (v: unknown) => boolean, defaultValue: () =>boolean):boolean;
-export function GetBooleanPropOrDefault(props:Record<string, unknown> | undefined | null, prop:string, defaultValue:boolean):boolean;
-export function GetBooleanPropOrDefaultFunction(props:Record<string, unknown> | undefined | null, prop:string, defaultValue: () =>boolean):boolean;
-export function GetBooleanPropOrThrow(props:Record<string, unknown> | undefined | null, prop:string, constructorFunc?: (v: unknown) => boolean):boolean;
-export function GetDateArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): Date[] | R;
-export function GetDateArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): Date[] | R;
-export function GetDateArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string): Date[];
-export function GetDatePropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): R | Date;
-export function GetDatePropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R | Date;
-export function GetDatePropOrThrow(props: Record<string, unknown> | undefined | null, prop: string): Date;
-export function GetMapPropOrDefault<K, V, R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): Map<K, V> | R;
-export function GetMapPropOrDefaultFunction<K, V, R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): Map<K, V> | R;
-export function GetMapPropOrThrow<K, V>(props: Record<string, unknown> | undefined | null, prop: string, message?: string): Map<K, V>;
-export function GetNumberPropOrDefault<R extends number | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): R;
-export function GetNumberPropOrDefaultFunction<R extends number | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R;
-export function GetNumberPropOrThrow<R extends number | null>(props: Record<string, unknown> | undefined | null, prop: string, message? : string): R;
-export function GetObjectArrayFunctionPropOrDefault<Y, X extends Y[] | null>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, defaultValue: X): X;
-export function GetObjectArrayFunctionPropOrThrow<Y, X extends Y[] | null>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, message? : string): X;
-export function GetObjectArrayPropOrDefault<Y, X extends Y[] | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: X): X;
-export function GetObjectArrayPropOrDefaultFunction<Y, X extends Y[] | null>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, defaultValue: () => X): X;
-export function GetObjectArrayPropOrThrow<Y, X extends Y[] | null>(props: Record<string, unknown> | undefined | null, prop: string): X;
-export function GetObjectFunctionPropOrDefault<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, defaultValue: Y): Y;
-export function GetObjectFunctionPropOrDefaultAllowNull<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFuncAllowNull<Y>, defaultValue: Y): Y;
-export function GetObjectFunctionPropOrThrow<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, message? : string): Y;
-export function GetObjectFunctionPropOrThrowAllowNull<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFuncAllowNull<Y>, message?: string): Y;
-export function GetObjectPropOrDefault<Y>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: Y): Y;
-export function GetObjectPropOrDefaultAllowNull<Y>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: Y): Y;
-export function GetObjectPropOrDefaultFunction<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFunc<Y>, defaultValue: () => Y): Y;
-export function GetObjectPropOrDefaultFunctionAllowNull<Y>(props: Record<string, unknown> | undefined | null, prop: string, constructorFunc: ConstructorFuncAllowNull<Y>, defaultValue: () => Y): Y;
-export function GetObjectPropOrThrow<Y>(props: Record<string, unknown> | undefined | null, prop: string): Y;
-export function GetObjectPropOrThrowAllowNull<Y>(props: Record<string, unknown> | undefined | null, prop: string): Y;
-export function GetStringArrayPropOrDefault<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): string[] | R;
-export function GetStringArrayPropOrDefaultFunction<R>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): string[] | R;
-export function GetStringArrayPropOrThrow(props: Record<string, unknown> | undefined | null, prop: string, message? : string): string[];
-export function GetStringPropOrDefault<R extends string | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultValue: R): R;
-export function GetStringPropOrDefaultFunction<R extends string | null>(props: Record<string, unknown> | undefined | null, prop: string, defaultFunction: () => R): R;
-export function GetStringPropOrThrow<R extends string | null>(props: Record<string, unknown> | undefined | null, prop: string, message? : string): R;
+export function GetBigIntPropOrDefault<R extends bigint | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): R;
+export function GetBigIntPropOrDefaultFunction<R extends bigint | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): R;
+export function GetBigIntPropOrThrow<R extends bigint | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  message?: string
+): R;
+export function GetBooleanFunctionPropOrDefault(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: (v: unknown) => boolean,
+  defaultValue: boolean
+): boolean;
+export function GetBooleanFunctionPropOrDefaultFunction(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: (v: unknown) => boolean,
+  defaultValue: () => boolean
+): boolean;
+export function GetBooleanPropOrDefault(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: boolean
+): boolean;
+export function GetBooleanPropOrDefaultFunction(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: () => boolean
+): boolean;
+export function GetBooleanPropOrThrow(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc?: (v: unknown) => boolean
+): boolean;
+export function GetDateArrayPropOrDefault<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): Date[] | R;
+export function GetDateArrayPropOrDefaultFunction<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): Date[] | R;
+export function GetDateArrayPropOrThrow(
+  props: Record<string, unknown> | undefined | null,
+  prop: string
+): Date[];
+export function GetDatePropOrDefault<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): R | Date;
+export function GetDatePropOrDefaultFunction<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): R | Date;
+export function GetDatePropOrThrow(
+  props: Record<string, unknown> | undefined | null,
+  prop: string
+): Date;
+export function GetMapPropOrDefault<K, V, R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): Map<K, V> | R;
+export function GetMapPropOrDefaultFunction<K, V, R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): Map<K, V> | R;
+export function GetMapPropOrThrow<K, V>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  message?: string
+): Map<K, V>;
+export function GetNumberPropOrDefault<R extends number | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): R;
+export function GetNumberPropOrDefaultFunction<R extends number | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): R;
+export function GetNumberPropOrThrow<R extends number | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  message?: string
+): R;
+export function GetObjectArrayFunctionPropOrDefault<Y, X extends Y[] | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  defaultValue: X
+): X;
+export function GetObjectArrayFunctionPropOrThrow<Y, X extends Y[] | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  message?: string
+): X;
+export function GetObjectArrayPropOrDefault<Y, X extends Y[] | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: X
+): X;
+export function GetObjectArrayPropOrDefaultFunction<Y, X extends Y[] | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  defaultValue: () => X
+): X;
+export function GetObjectArrayPropOrThrow<Y, X extends Y[] | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string
+): X;
+export function GetObjectFunctionPropOrDefault<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  defaultValue: Y
+): Y;
+export function GetObjectFunctionPropOrDefaultAllowNull<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFuncAllowNull<Y>,
+  defaultValue: Y
+): Y;
+export function GetObjectFunctionPropOrThrow<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  message?: string
+): Y;
+export function GetObjectFunctionPropOrThrowAllowNull<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFuncAllowNull<Y>,
+  message?: string
+): Y;
+export function GetObjectPropOrDefault<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: Y
+): Y;
+export function GetObjectPropOrDefaultAllowNull<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: Y
+): Y;
+export function GetObjectPropOrDefaultFunction<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFunc<Y>,
+  defaultValue: () => Y
+): Y;
+export function GetObjectPropOrDefaultFunctionAllowNull<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  constructorFunc: ConstructorFuncAllowNull<Y>,
+  defaultValue: () => Y
+): Y;
+export function GetObjectPropOrThrow<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string
+): Y;
+export function GetObjectPropOrThrowAllowNull<Y>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string
+): Y;
+export function GetStringArrayPropOrDefault<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): string[] | R;
+export function GetStringArrayPropOrDefaultFunction<R>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): string[] | R;
+export function GetStringArrayPropOrThrow(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  message?: string
+): string[];
+export function GetStringPropOrDefault<R extends string | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultValue: R
+): R;
+export function GetStringPropOrDefaultFunction<R extends string | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  defaultFunction: () => R
+): R;
+export function GetStringPropOrThrow<R extends string | null>(
+  props: Record<string, unknown> | undefined | null,
+  prop: string,
+  message?: string
+): R;
 export type ConstructorFunc<Y> = (params: object) => Y;
 export type ConstructorFuncAllowNull<Y> = (params: object | null) => Y;
 ```
