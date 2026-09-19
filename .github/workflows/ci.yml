@@ -101,6 +101,18 @@ jobs:
       - run: npm run lint --if-present
       - run: npm test --if-present
 
+  workflow-validation:
+    name: Validate GitHub Actions
+    needs: [route]
+    if: ${{ needs.route.outputs.run_code_checks == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@latest
+
   build:
     name: Build Artifacts
     needs: [route, node-lint-test]
@@ -161,7 +173,7 @@ jobs:
 
   release-ready:
     name: Release Quality Gates Passed
-    needs: [route, node-lint-test, build]
+    needs: [route, node-lint-test, workflow-validation, build]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:
@@ -209,8 +221,10 @@ jobs:
           RELEASE_VERSION_OVERRIDE: ${{ inputs.release_version_override }}
         run: |
           set -euo pipefail
-          export PATH="$(go env GOPATH)/bin:$PATH"
-          export CURRENT_VERSION=$(node -p "require('./package.json').version")
+          GO_PATH=$(go env GOPATH)
+          export PATH="${GO_PATH}/bin:$PATH"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION
 
           if [[ -n "$RELEASE_VERSION_OVERRIDE" ]]; then
              # Normalize optional leading v
@@ -359,51 +373,39 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Verify package version matches tag
+      - name: Verify package version and select channel policy
+        id: policy
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          export CURRENT_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED_TAG="v${CURRENT_VERSION}"
-          if [[ "${{ github.ref_name }}" != "$EXPECTED_TAG" ]]; then
-             echo "Error: Tag ${{ github.ref_name }} does not match package version $EXPECTED_TAG."
-             sh -c "exit 1"
-          fi
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          ./scripts/release-policy.sh "$TAG_NAME" "$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: ${{ steps.policy.outputs.create_github_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref, '-') }}
+          prerelease: ${{ steps.policy.outputs.prerelease }}
 
       - name: Publish package to npm
-        if: ${{ !endsWith(github.ref_name, '-next') }}
+        if: ${{ steps.policy.outputs.publish_npm == 'true' }}
         run: |
           npm ci
           npm run build
-          TAG_ARG="latest"
-          if [[ "${{ github.ref_name }}" == *-* ]]; then
-            TAG_ARG="next"
-          fi
-          npm publish --access=public --tag $TAG_ARG
+          npm publish --access=public --tag ${{ steps.policy.outputs.npm_dist_tag }}
 
       - name: Determine if dev prep needed
         id: devprep
         run: |
-          export CURRENT_VERSION=$(node -p "require('./package.json').version")
-          if [[ "${CURRENT_VERSION}" != *-* ]]; then
-            echo "prepare_next=true" >> "$GITHUB_OUTPUT"
-            echo "current_version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
-            node <<'NODE'
-            const fs = require('fs');
-            const current = process.env.CURRENT_VERSION;
-            function nextPatch(version) {
-              const [major, minor, patchPart] = version.split('.');
-              const numericPatch = parseInt(patchPart.split('-')[0], 10);
-              return `${major}.${minor}.${numericPatch + 1}`;
-            }
-            const nextDev = `${nextPatch(current)}-next`;
-            fs.writeFileSync('/tmp/next-dev-version', nextDev);
-            NODE
-            echo "next_dev_version=$(cat /tmp/next-dev-version)" >> "$GITHUB_OUTPUT"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          export CURRENT_VERSION
+          if [[ "${{ steps.policy.outputs.prepare_next }}" == "true" ]]; then
+            {
+              echo "prepare_next=true"
+              echo "current_version=${CURRENT_VERSION}"
+              echo "next_dev_version=$(node scripts/prepare-next-dev-version.js calculate)"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "prepare_next=false" >> "$GITHUB_OUTPUT"
           fi
@@ -413,25 +415,7 @@ jobs:
         run: |
           NEXT_DEV_VERSION=${{ steps.devprep.outputs.next_dev_version }}
           export NEXT_DEV_VERSION
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          const nextVersion = process.env.NEXT_DEV_VERSION;
-          const pkgPath = path.join(process.cwd(), 'package.json');
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-          pkg.version = nextVersion;
-          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-
-          const lockPath = path.join(process.cwd(), 'package-lock.json');
-          if (fs.existsSync(lockPath)) {
-            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-            lock.version = nextVersion;
-            if (lock.packages && lock.packages['']) {
-              lock.packages[''].version = nextVersion;
-            }
-            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
-          }
-          NODE
+          node scripts/prepare-next-dev-version.js set
 
       - name: Create next iteration pull request
         if: ${{ steps.devprep.outputs.prepare_next == 'true' }}

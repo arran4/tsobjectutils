@@ -64,6 +64,7 @@ run_test "Publish-tag workflow (valid tag)" "workflow_dispatch" "publish-tag" "t
 run_test "Publish-tag workflow (invalid ref, branch)" "workflow_dispatch" "publish-tag" "branch" "refs/heads/main" "" "" "false" "false" 1 || (echo "FAILED"; false)
 run_test "Publish-tag workflow (invalid ref, no v prefix)" "workflow_dispatch" "publish-tag" "tag" "refs/tags/1.0.0" "" "" "false" "false" 1 || (echo "FAILED"; false)
 run_test "Release preparation (release-minor)" "workflow_dispatch" "release-minor" "branch" "refs/heads/main" "" "" "false" "true" 0 || (echo "FAILED"; false)
-run_test "Push tag v1.0.0" "push" "" "tag" "refs/tags/v1.0.0" "" "" "true" "false" 0 || (echo "FAILED"; false)
+run_test "Release preparation rejects feature branch" "workflow_dispatch" "release-minor" "branch" "refs/heads/feature" "" "" "false" "false" 1 || (echo "FAILED"; false)
+run_test "Push tag v1.0.0 does not publish" "push" "" "tag" "refs/tags/v1.0.0" "" "" "false" "false" 0 || (echo "FAILED"; false)
 
 echo "All routing tests passed."

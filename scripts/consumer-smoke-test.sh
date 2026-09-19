@@ -6,11 +6,28 @@ echo "Running consumer smoke test..."
 # Ensure we're in the repository root
 cd "$(dirname "$0")/.."
 
+PACK_FILE=""
+TEMP_DIR=""
+cleanup() {
+  [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR"
+  [[ -n "$PACK_FILE" && -f "$PACK_FILE" ]] && rm -f "$PACK_FILE"
+}
+trap cleanup EXIT
+
 # Pack the package
 npm run build
-PACK_FILE=$(npm pack | tail -n 1)
+PACK_FILE="$PWD/$(npm pack | tail -n 1)"
 
 echo "Packed file: $PACK_FILE"
+
+if ! tar -tzf "$PACK_FILE" | grep -Fx 'package/dist/index.js' > /dev/null; then
+  echo "Packed package is missing package/dist/index.js" >&2
+  exit 1
+fi
+if ! tar -tzf "$PACK_FILE" | grep -Fx 'package/dist/index.d.ts' > /dev/null; then
+  echo "Packed package is missing package/dist/index.d.ts" >&2
+  exit 1
+fi
 
 # Create a temporary consumer directory
 TEMP_DIR=$(mktemp -d)
@@ -21,7 +38,7 @@ cd "$TEMP_DIR"
 npm init -y > /dev/null
 
 # Install the packed tarball
-npm install "$OLDPWD/$PACK_FILE"
+npm install "$PACK_FILE"
 
 # Create a CommonJS test file
 cat << 'CJS_TEST' > test-cjs.js
@@ -53,8 +70,3 @@ echo "Running ESM test..."
 node test-esm.mjs
 
 echo "All smoke tests passed."
-
-# Cleanup
-cd "$OLDPWD"
-rm -rf "$TEMP_DIR"
-rm "$PACK_FILE"

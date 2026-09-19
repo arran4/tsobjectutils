@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "test": "jest ./src && ./scripts/test-ci-routing.sh",
+    "test": "jest ./src && ./scripts/test-ci-routing.sh && ./scripts/test-workflow-contract.sh",
     "build": "tsc",
     "prepublish": "tsc",
     "lint": "eslint 'src/**/*.{ts,tsx}'"
