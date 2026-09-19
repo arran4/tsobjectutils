@@ -51,6 +51,7 @@ jobs:
       is_monthly: ${{ steps.route.outputs.is_monthly }}
       mode: ${{ steps.route.outputs.mode }}
     steps:
+      - uses: actions/checkout@v4
       - id: route
         env:
           EVENT_NAME: ${{ github.event_name }}
