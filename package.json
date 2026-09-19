@@ -4,7 +4,6 @@
   "description": "Some typescript marshaling to class helper functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-
   "scripts": {
     "test": "jest ./src && ./scripts/test-ci-routing.sh",
     "build": "tsc",
