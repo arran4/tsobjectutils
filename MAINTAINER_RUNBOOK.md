@@ -71,7 +71,15 @@ If the bump landed but the tag did not, first inspect the exact branch commit
 and tag state. An exact override can reuse a matching package version, but
 fully state-aware recovery is not yet complete. If the tag exists but the
 publisher failed, select that exact tag in the Actions UI and dispatch
-`publish-tag`; it will rerun the tag/version check and channel policy.
+`publish-tag`; it will rerun the tag/version check and channel policy. Before
+doing so, inspect whether GitHub already has a Release for that tag and whether
+npm already has the exact package version (and its expected dist-tag). A
+partially successful publisher can have created either one. A retry currently
+attempts the normal GitHub Release and npm publish steps again, so npm may
+reject an existing immutable version and GitHub may report an existing Release.
+Record the observed state and use the exact tag only after confirming the
+manual retry is appropriate; do not treat a retry as an idempotent success.
+State-aware handling of those partial-publication states remains #54.
 
 ## Current limitations and follow-up work
 

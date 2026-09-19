@@ -279,81 +279,15 @@ jobs:
              echo "DID_BUMP=true" >> "$GITHUB_ENV"
           fi
 
-      - name: Tag and push (Idempotent)
+      - name: Tag, push, and dispatch publisher
         env:
           GITHUB_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-
-          # Check remote state for idempotency/retry FIRST
-          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | grep -v '{}$' | awk '{print $1}' || true)
-          PEELED_SHA=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk '{print $1}' || true)
-          if [[ -n "$PEELED_SHA" ]]; then
-              REMOTE_SHA="$PEELED_SHA"
-          fi
-
-          if [[ "$DID_BUMP" == "false" ]]; then
-              # Validated SHA is exactly GITHUB_SHA
-              if [[ -n "$REMOTE_SHA" ]]; then
-                 if [[ "$REMOTE_SHA" == "$GITHUB_SHA" ]]; then
-                    echo "Tag $TAG already exists on origin and points to correct SHA ($GITHUB_SHA). Safely retrying publish."
-                 else
-                    echo "Error: Tag $TAG already exists on origin but points to $REMOTE_SHA, not expected $GITHUB_SHA."
-                    sh -c "exit 1"
-                 fi
-              fi
-              NEW_SHA="${GITHUB_SHA}"
-          else
-             if [[ -n "$REMOTE_SHA" ]]; then
-                echo "Error: Tag $TAG already exists on origin, but we just bumped the version locally. Cannot move tag."
-                sh -c "exit 1"
-             fi
-
-             VALIDATED_SHA="${GITHUB_SHA}"
-
-             git fetch origin ${{ github.ref_name }}
-             CURRENT_REMOTE_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-             if [[ "$CURRENT_REMOTE_SHA" != "$VALIDATED_SHA" ]]; then
-                echo "Error: Remote branch ${{ github.ref_name }} has moved to $CURRENT_REMOTE_SHA. Expected $VALIDATED_SHA." >&2
-                sh -c "exit 1"
-             fi
-
-             git config push.default current
-             sh -c 'git push origin HEAD:${{ github.ref_name }}' || {
-                echo "Error: Branch push failed completely." >&2
-                sh -c "exit 1"
-             }
-
-             NEW_SHA=$(git rev-parse HEAD)
-
-             VERIFY_BRANCH_SHA=$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | awk '{print $1}')
-             if [[ "$VERIFY_BRANCH_SHA" != "$NEW_SHA" ]]; then
-                echo "Error: Remote branch is at $VERIFY_BRANCH_SHA but we expected our pushed commit $NEW_SHA. Failing closed." >&2
-                sh -c "exit 1"
-             fi
-          fi
-
-          if [[ -z "$REMOTE_SHA" ]]; then
-             git tag -d "$TAG" 2>/dev/null || true
-
-             git tag "$TAG" "$NEW_SHA"
-             sh -c 'git push origin "$TAG"' || {
-                REMOTE_SHA=$(git ls-remote --tags origin "$TAG" | awk '{print $1}')
-                if [[ "$REMOTE_SHA" != "$NEW_SHA" ]]; then
-                   echo "Race condition: tag pushed remotely with different SHA ($REMOTE_SHA)"
-                   sh -c "exit 1"
-                fi
-             }
-          fi
-
-      - name: Dispatch Publisher
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run ci.yml --ref "$TAG" -f mode=publish-tag
+          ./scripts/release-tag-and-dispatch.sh
 
   publisher:
     name: Release Publisher
