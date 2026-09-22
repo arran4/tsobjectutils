@@ -65,7 +65,11 @@ Common helpers can also be used independently:
 
 ```typescript
 const lastLogin = GetDatePropOrDefault(rawUser, 'LastLogin', new Date());
-const settings = GetObjectFunctionPropOrThrow(rawUser, 'Settings', (v) => new UserSettings(v));
+const settings = GetObjectFunctionPropOrThrow(
+  rawUser,
+  'Settings',
+  (v) => new UserSettings(v)
+);
 const roles = GetStringArrayPropOrDefault(rawUser, 'Roles', []);
 const isAdmin = GetBooleanPropOrDefault(rawUser, 'IsAdmin', false);
 ```

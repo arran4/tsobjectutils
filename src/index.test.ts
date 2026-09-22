@@ -613,52 +613,28 @@ describe('README example', () => {
   class UserSettings {
     constructor(
       props: Partial<Record<keyof UserSettings, unknown>> | null = null,
-      public Theme: string = GetStringPropOrDefault(
-        props as Record<string, unknown> | null,
-        'Theme',
-        'light'
-      )
+      public Theme: string = GetStringPropOrDefault(props, 'Theme', 'light')
     ) {}
   }
 
   class User {
     constructor(
       props: Partial<Record<keyof User, unknown>> | null = null,
-      public UserUID: string = GetStringPropOrDefault(
-        props as Record<string, unknown> | null,
-        'UserUID',
-        ''
-      ),
-      public Email: string = GetStringPropOrDefault(
-        props as Record<string, unknown> | null,
-        'Email',
-        ''
-      ),
-      public Name: string = GetStringPropOrDefault(
-        props as Record<string, unknown> | null,
-        'Name',
-        ''
-      ),
+      public UserUID: string = GetStringPropOrDefault(props, 'UserUID', ''),
+      public Email: string = GetStringPropOrDefault(props, 'Email', ''),
+      public Name: string = GetStringPropOrDefault(props, 'Name', ''),
       public Settings: UserSettings = GetObjectFunctionPropOrThrow(
-        props as Record<string, unknown> | null,
+        props,
         'Settings',
         (v) => new UserSettings(v)
       ),
-      public Tags: string[] = GetStringArrayPropOrDefault(
-        props as Record<string, unknown> | null,
-        'Tags',
-        []
-      ),
+      public Tags: string[] = GetStringArrayPropOrDefault(props, 'Tags', []),
       public Created: Date | null = GetDatePropOrDefault(
-        props as Record<string, unknown> | null,
+        props,
         'Created',
         null
       ),
-      public Active: boolean = GetBooleanPropOrDefault(
-        props as Record<string, unknown> | null,
-        'Active',
-        false
-      )
+      public Active: boolean = GetBooleanPropOrDefault(props, 'Active', false)
     ) {}
   }
 
