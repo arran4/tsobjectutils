@@ -609,6 +609,45 @@ describe('object allow null', () => {
   });
 });
 
+describe('README example', () => {
+  class UserSettings {
+    constructor(
+      props: Partial<Record<keyof UserSettings, unknown>> | null = null,
+      public Theme: string = GetStringPropOrDefault(props, 'Theme', 'light')
+    ) {}
+  }
+
+  class User {
+    constructor(
+      props: Partial<Record<keyof User, unknown>> | null = null,
+      public UserUID: string = GetStringPropOrDefault(props, 'UserUID', ''),
+      public Email: string = GetStringPropOrDefault(props, 'Email', ''),
+      public Name: string = GetStringPropOrDefault(props, 'Name', ''),
+      public Settings: UserSettings = GetObjectFunctionPropOrThrow(
+        props,
+        'Settings',
+        (v) => new UserSettings(v)
+      ),
+      public Tags: string[] = GetStringArrayPropOrDefault(props, 'Tags', []),
+      public Created: Date | null = GetDatePropOrDefault(
+        props,
+        'Created',
+        null
+      ),
+      public Active: boolean = GetBooleanPropOrDefault(props, 'Active', false)
+    ) {}
+  }
+
+  it('correctly constructs nested objects', () => {
+    const rawUser = {
+      Settings: { Theme: 'dark' },
+    };
+    const user = new User(rawUser);
+    expect(user.Settings).toBeInstanceOf(UserSettings);
+    expect(user.Settings.Theme).toBe('dark');
+  });
+});
+
 describe('regexp', () => {
   test('PropOrDefaultFunction', () => {
     expect(
