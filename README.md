@@ -32,7 +32,6 @@ import {
   GetStringPropOrDefault,
   GetDatePropOrDefault,
   GetBooleanPropOrDefault,
-  GetObjectPropOrThrow,
   GetObjectFunctionPropOrThrow,
   GetStringArrayPropOrDefault,
 } from '@arran4/tsobjectutils';
@@ -66,7 +65,7 @@ Common helpers can also be used independently:
 
 ```typescript
 const lastLogin = GetDatePropOrDefault(rawUser, 'LastLogin', new Date());
-const settings = GetObjectPropOrThrow<UserSettings>(rawUser, 'Settings');
+const settings = GetObjectFunctionPropOrThrow(rawUser, 'Settings', (v) => new UserSettings(v));
 const roles = GetStringArrayPropOrDefault(rawUser, 'Roles', []);
 const isAdmin = GetBooleanPropOrDefault(rawUser, 'IsAdmin', false);
 ```
